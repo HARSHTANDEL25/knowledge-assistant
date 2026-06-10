@@ -13,8 +13,8 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Horizontal Digital Assistant",
-  description: "A knowledge assistant for internal company resources.",
+  title: "Horizontal Knowledge Assistant",
+  description: "AI-powered knowledge assistant for Horizontal Digital — instant answers from HR, IT, and project documentation.",
 };
 
 export default function RootLayout({

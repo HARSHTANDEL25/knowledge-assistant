@@ -1,12 +1,16 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
-import { ArrowUp, Sparkles, FileText, Users, MonitorSmartphone, Building2 } from "lucide-react";
+import Link from "next/link";
+import { ArrowUp, Sparkles, FileText, Users, MonitorSmartphone, Building2, LogOut, FolderKanban, Settings } from "lucide-react";
+import { createClient } from "@/utils/supabase/client";
 
 type Source = { source_file: string; page_number: number | null };
 type Msg = { role: "user" | "assistant"; content: string; sources?: Source[] };
+type ProjectKb = { id: string; name: string; slug: string };
 
 const ACCENT = "#FF4747";
 const ASSISTANT = "#5B8DEF";
@@ -16,7 +20,6 @@ const DEPARTMENTS = [
     key: "hr",
     name: "HR",
     Icon: Users,
-    desc: "Leave policies, handbook, holidays, benefits",
     placeholder: "Ask about leave, holidays, NPS, remote work…",
     suggestions: [
       "How many days of annual leave do I get?",
@@ -28,7 +31,6 @@ const DEPARTMENTS = [
     key: "it",
     name: "IT",
     Icon: MonitorSmartphone,
-    desc: "Security policy, MFA, VPN, IT setup",
     placeholder: "Ask about security, VPN, MFA, IT setup…",
     suggestions: [
       "How do I set up multi-factor authentication?",
@@ -38,20 +40,50 @@ const DEPARTMENTS = [
   },
 ] as const;
 
-type KbKey = (typeof DEPARTMENTS)[number]["key"];
-
 const MD =
   "[&_ol]:list-decimal [&_ol]:pl-5 [&_ul]:list-disc [&_ul]:pl-5 [&_li]:my-1 [&_p]:my-2 [&_p:first-child]:mt-0 [&_p:last-child]:mb-0 [&_strong]:font-semibold [&_strong]:text-white [&_code]:rounded [&_code]:bg-[#262B33] [&_code]:px-1 [&_code]:py-0.5 [&_code]:text-[13px] [&_code]:font-mono [&_h1]:text-lg [&_h1]:font-bold [&_h2]:font-semibold [&_h2]:mt-3 [&_a]:underline [&_a]:text-[#7fa8ff] [&_table]:my-2 [&_th]:text-left [&_th]:pr-4 [&_td]:pr-4 [&_td]:py-0.5";
 
 export default function Home() {
-  const [kb, setKb] = useState<KbKey>("hr");
-  const [histories, setHistories] = useState<Record<KbKey, Msg[]>>({ hr: [], it: [] });
+  const router = useRouter();
+  const [kb, setKb] = useState<string>("hr");
+  const [histories, setHistories] = useState<Record<string, Msg[]>>({ hr: [], it: [] });
   const [input, setInput] = useState("");
   const [busy, setBusy] = useState(false);
+  const [userEmail, setUserEmail] = useState<string | null>(null);
+  const [userRole, setUserRole] = useState<string | null>(null);
+  const [projectKbs, setProjectKbs] = useState<ProjectKb[]>([]);
   const endRef = useRef<HTMLDivElement>(null);
 
-  const dept = DEPARTMENTS.find((d) => d.key === kb)!;
-  const messages = histories[kb];
+  useEffect(() => {
+    const supabase = createClient();
+    supabase.auth.getUser().then(async ({ data }) => {
+      if (!data.user) return;
+      setUserEmail(data.user.email ?? null);
+      const { data: profile } = await supabase
+        .from("profiles")
+        .select("role")
+        .eq("id", data.user.id)
+        .single();
+      setUserRole(profile?.role ?? null);
+      const res = await fetch("/api/projects");
+      if (res.ok) setProjectKbs(await res.json());
+    });
+  }, []);
+
+  async function handleLogout() {
+    const supabase = createClient();
+    await supabase.auth.signOut();
+    router.push("/login");
+  }
+
+  const staticDept = DEPARTMENTS.find((d) => d.key === kb);
+  const projectDept = projectKbs.find((p) => p.slug === kb);
+  const dept = staticDept ?? {
+    name: projectDept?.name ?? kb,
+    placeholder: "Ask anything about this project…",
+    suggestions: [] as string[],
+  };
+  const messages = histories[kb] ?? [];
 
   useEffect(() => {
     endRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -65,7 +97,7 @@ export default function Home() {
     const kbAtSend = kb;
     setHistories((h) => ({
       ...h,
-      [kbAtSend]: [...h[kbAtSend], { role: "user", content: q }, { role: "assistant", content: "" }],
+      [kbAtSend]: [...(h[kbAtSend] ?? []), { role: "user", content: q }, { role: "assistant", content: "" }],
     }));
 
     try {
@@ -120,24 +152,64 @@ export default function Home() {
             </div>
           </div>
 
-          {/* Segmented KB switcher */}
-          <div className="flex gap-1 rounded-lg border border-[#262B33] bg-[#15181E] p-1">
-            {DEPARTMENTS.map((d) => {
-              const active = kb === d.key;
-              const I = d.Icon;
-              return (
+          <div className="flex items-center gap-3">
+            {/* Segmented KB switcher */}
+            <div className="flex gap-1 rounded-lg border border-[#262B33] bg-[#15181E] p-1">
+              {DEPARTMENTS.map((d) => {
+                const active = kb === d.key;
+                const I = d.Icon;
+                return (
+                  <button
+                    key={d.key}
+                    onClick={() => setKb(d.key)}
+                    style={active ? { backgroundColor: ACCENT } : undefined}
+                    className={`flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${
+                      active ? "text-white" : "text-[#8A919C] hover:text-[#E8EAED]"
+                    }`}
+                  >
+                    <I size={15} /> {d.name}
+                  </button>
+                );
+              })}
+              {projectKbs.map((p) => {
+                const active = kb === p.slug;
+                return (
+                  <button
+                    key={p.slug}
+                    onClick={() => setKb(p.slug)}
+                    style={active ? { backgroundColor: ACCENT } : undefined}
+                    className={`flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${
+                      active ? "text-white" : "text-[#8A919C] hover:text-[#E8EAED]"
+                    }`}
+                  >
+                    <FolderKanban size={15} /> {p.name}
+                  </button>
+                );
+              })}
+            </div>
+
+            {/* User + admin + logout */}
+            {userEmail && (
+              <div className="flex items-center gap-2">
+                <span className="max-w-[140px] truncate text-[11px] text-[#5f6873]">{userEmail}</span>
+                {(userRole === "super_admin" || userRole === "project_admin") && (
+                  <Link
+                    href="/admin"
+                    title="Admin panel"
+                    className="flex h-7 w-7 items-center justify-center rounded-md text-[#5f6873] transition-colors hover:bg-[#1C2026] hover:text-[#E8EAED]"
+                  >
+                    <Settings size={14} />
+                  </Link>
+                )}
                 <button
-                  key={d.key}
-                  onClick={() => setKb(d.key)}
-                  style={active ? { backgroundColor: ACCENT } : undefined}
-                  className={`flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${
-                    active ? "text-white" : "text-[#8A919C] hover:text-[#E8EAED]"
-                  }`}
+                  onClick={handleLogout}
+                  title="Sign out"
+                  className="flex h-7 w-7 items-center justify-center rounded-md text-[#5f6873] transition-colors hover:bg-[#1C2026] hover:text-[#E8EAED]"
                 >
-                  <I size={15} /> {d.name}
+                  <LogOut size={14} />
                 </button>
-              );
-            })}
+              </div>
+            )}
           </div>
         </div>
       </header>
