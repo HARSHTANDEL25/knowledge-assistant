@@ -28,7 +28,19 @@ export const updateSession = async (request: NextRequest) => {
 
   // IMPORTANT: refresh the session right after creating the client.
   // Do not insert other logic between createServerClient and getUser.
-  await supabase.auth.getUser();
+  const { data: { user } } = await supabase.auth.getUser();
+
+  const { pathname } = request.nextUrl;
+  const isAuthRoute = pathname.startsWith("/login") || pathname.startsWith("/signup");
+  const isApiRoute = pathname.startsWith("/api/");
+
+  if (!user && !isAuthRoute && !isApiRoute) {
+    return NextResponse.redirect(new URL("/login", request.url));
+  }
+
+  if (user && isAuthRoute) {
+    return NextResponse.redirect(new URL("/", request.url));
+  }
 
   return supabaseResponse;
 };
