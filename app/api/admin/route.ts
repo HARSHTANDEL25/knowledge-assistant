@@ -44,7 +44,14 @@ export async function GET() {
     ? await db.from("project_access").select("kb_id, user_id, profiles(email)").in("kb_id", kbIds)
     : { data: [] };
 
-  return Response.json({ kbs: kbs ?? [], access: access ?? [] });
+  // Check if this user has connected Confluence via OAuth
+  const { data: tokenRow } = await db
+    .from("confluence_tokens")
+    .select("user_id")
+    .eq("user_id", admin.user.id)
+    .single();
+
+  return Response.json({ kbs: kbs ?? [], access: access ?? [], confluenceConnected: !!tokenRow });
 }
 
 // POST /api/admin — create KB, assign, or revoke access
