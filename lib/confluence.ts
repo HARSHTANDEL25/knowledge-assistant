@@ -45,6 +45,14 @@ export async function fetchPagesFromUrl(
       : fetchPageWithDescendantsV1(pageMatch[1], creds);
   }
 
+  // /folder/ID — use same CQL ancestor traversal as pages
+  const folderMatch = confluenceUrl.match(/\/folder\/(\d+)/);
+  if (folderMatch) {
+    return creds.type === "oauth"
+      ? fetchDescendantsOfIdOAuth(folderMatch[1], creds)
+      : fetchPageWithDescendantsV1(folderMatch[1], creds);
+  }
+
   const spaceMatch = confluenceUrl.match(/\/spaces\/([^/?#]+)/i);
   if (spaceMatch) {
     return creds.type === "oauth"
@@ -52,12 +60,27 @@ export async function fetchPagesFromUrl(
       : fetchSpacePagesV1(spaceMatch[1], creds);
   }
 
-  throw new Error("Invalid Confluence URL — paste a space URL (.../spaces/KEY) or page URL (.../pages/ID/Title)");
+  throw new Error("Invalid Confluence URL — paste a space, page, or folder URL");
 }
 
 // ── OAuth path ────────────────────────────────────────────────────────────────
 // Strategy: use v1 /search?cql=ancestor=X to discover ALL descendants
 // (CQL traverses folders transparently). Fetch each page body via v2.
+
+async function fetchDescendantsOfIdOAuth(id: string, creds: ConfluenceCreds): Promise<ConfluencePage[]> {
+  const pages: ConfluencePage[] = [];
+  const ids = await fetchDescendantIdsViaCql(id, creds);
+  for (const pid of ids) {
+    try {
+      const page = await cfetch(creds, `${v2Base(creds)}/pages/${pid}?body-format=storage`);
+      const text = cleanHtml(page.body?.storage?.value ?? "");
+      if (text.length >= 50) pages.push({ id: page.id, title: page.title, text });
+    } catch (e) {
+      console.warn(`[confluence] skipping page ${pid}:`, e);
+    }
+  }
+  return pages;
+}
 
 async function fetchPageWithDescendantsOAuth(pageId: string, creds: ConfluenceCreds): Promise<ConfluencePage[]> {
   const pages: ConfluencePage[] = [];
