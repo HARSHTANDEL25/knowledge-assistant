@@ -1,117 +1,186 @@
-// Confluence Cloud REST API client + HTML cleaner for the sync connector.
-// Uses Basic Auth (email:token) — credentials set once by admin in env vars.
+// Confluence Cloud API client + HTML cleaner.
+// OAuth → api.atlassian.com gateway
+//   v1 content endpoints return 410; v2 used for page bodies
+//   v1 /search CQL used for descendant discovery (traverses folders transparently)
+// API token → direct instance URL → v1 works fine
 
-const BASE = process.env.CONFLUENCE_BASE_URL;
-const EMAIL = process.env.CONFLUENCE_EMAIL;
-const TOKEN = process.env.CONFLUENCE_TOKEN;
+type ConfluenceCreds =
+  | { type: "oauth"; accessToken: string; cloudId: string }
+  | { type: "apitoken" };
 
-function authHeader() {
-  const creds = Buffer.from(`${EMAIL}:${TOKEN}`).toString("base64");
-  return `Basic ${creds}`;
-}
-
-type ConfluencePage = { id: string; title: string; text: string };
-
-function requireEnv() {
-  if (!BASE || !EMAIL || !TOKEN) {
-    throw new Error("Missing CONFLUENCE_BASE_URL, CONFLUENCE_EMAIL, or CONFLUENCE_TOKEN in environment");
+function v1Base(creds: ConfluenceCreds): string {
+  if (creds.type === "oauth") {
+    return `https://api.atlassian.com/ex/confluence/${creds.cloudId}/wiki/rest/api`;
   }
+  return `${process.env.CONFLUENCE_BASE_URL}/wiki/rest/api`;
 }
 
-// Detect URL type and return pages accordingly
-export async function fetchPagesFromUrl(confluenceUrl: string): Promise<ConfluencePage[]> {
-  requireEnv();
+function v2Base(creds: ConfluenceCreds): string {
+  return `https://api.atlassian.com/ex/confluence/${(creds as { cloudId: string }).cloudId}/wiki/api/v2`;
+}
 
-  // Page URL: .../spaces/KEY/pages/PAGE_ID/... → fetch page + all children recursively
+function authHeader(creds: ConfluenceCreds): string {
+  if (creds.type === "oauth") return `Bearer ${creds.accessToken}`;
+  return `Basic ${Buffer.from(`${process.env.CONFLUENCE_EMAIL}:${process.env.CONFLUENCE_TOKEN}`).toString("base64")}`;
+}
+
+async function cfetch(creds: ConfluenceCreds, url: string) {
+  const res = await fetch(url, {
+    headers: { Authorization: authHeader(creds), Accept: "application/json" },
+  });
+  if (!res.ok) throw new Error(`Confluence API ${res.status}: ${await res.text()}`);
+  return res.json();
+}
+
+export type ConfluencePage = { id: string; title: string; text: string };
+
+export async function fetchPagesFromUrl(
+  confluenceUrl: string,
+  creds: ConfluenceCreds,
+): Promise<ConfluencePage[]> {
   const pageMatch = confluenceUrl.match(/\/pages\/(\d+)/);
   if (pageMatch) {
-    return fetchPageWithChildren(pageMatch[1]);
+    return creds.type === "oauth"
+      ? fetchPageWithDescendantsOAuth(pageMatch[1], creds)
+      : fetchPageWithDescendantsV1(pageMatch[1], creds);
   }
 
-  // Space URL: .../spaces/KEY
   const spaceMatch = confluenceUrl.match(/\/spaces\/([^/?#]+)/i);
   if (spaceMatch) {
-    return fetchSpacePages(spaceMatch[1]);
+    return creds.type === "oauth"
+      ? fetchSpacePagesOAuth(spaceMatch[1], creds)
+      : fetchSpacePagesV1(spaceMatch[1], creds);
   }
 
   throw new Error("Invalid Confluence URL — paste a space URL (.../spaces/KEY) or page URL (.../pages/ID/Title)");
 }
 
-// Fetch a page + ALL descendants using CQL ancestor query (handles any nesting depth)
-async function fetchPageWithChildren(pageId: string): Promise<ConfluencePage[]> {
+// ── OAuth path ────────────────────────────────────────────────────────────────
+// Strategy: use v1 /search?cql=ancestor=X to discover ALL descendants
+// (CQL traverses folders transparently). Fetch each page body via v2.
+
+async function fetchPageWithDescendantsOAuth(pageId: string, creds: ConfluenceCreds): Promise<ConfluencePage[]> {
   const pages: ConfluencePage[] = [];
 
-  // Fetch the root page itself
-  const rootRes = await fetch(`${BASE}/wiki/rest/api/content/${pageId}?expand=body.storage`, {
-    headers: { Authorization: authHeader(), Accept: "application/json" },
-  });
-  if (!rootRes.ok) throw new Error(`Confluence API ${rootRes.status}: ${await rootRes.text()}`);
-  const root = await rootRes.json();
+  // Root page body via v2
+  const root = await cfetch(creds, `${v2Base(creds)}/pages/${pageId}?body-format=storage`);
   const rootText = cleanHtml(root.body?.storage?.value ?? "");
   if (rootText.length >= 50) pages.push({ id: root.id, title: root.title, text: rootText });
 
-  // Fetch ALL descendants at once using CQL — no recursion needed, catches every level
-  let start = 0;
-  const limit = 25;
-  while (true) {
-    const cql = encodeURIComponent(`ancestor = ${pageId} AND type = page`);
-    const url = `${BASE}/wiki/rest/api/content/search?cql=${cql}&expand=body.storage&limit=${limit}&start=${start}`;
-    const res = await fetch(url, {
-      headers: { Authorization: authHeader(), Accept: "application/json" },
-    });
-    if (!res.ok) break;
-    const json = await res.json();
-
-    for (const page of json.results ?? []) {
+  // All descendants via v1 CQL — ancestor query sees through folders
+  const ids = await fetchDescendantIdsViaCql(pageId, creds);
+  for (const id of ids) {
+    try {
+      const page = await cfetch(creds, `${v2Base(creds)}/pages/${id}?body-format=storage`);
       const text = cleanHtml(page.body?.storage?.value ?? "");
       if (text.length >= 50) pages.push({ id: page.id, title: page.title, text });
+    } catch (e) {
+      console.warn(`[confluence] skipping page ${id}:`, e);
     }
-
-    if (!json._links?.next) break;
-    start += limit;
   }
 
   return pages;
 }
 
-async function fetchSpacePages(spaceKey: string): Promise<ConfluencePage[]> {
-  const pages: ConfluencePage[] = [];
+async function fetchDescendantIdsViaCql(pageId: string, creds: ConfluenceCreds): Promise<string[]> {
+  const base = v1Base(creds);
+  const ids: string[] = [];
   let start = 0;
-  const limit = 25;
 
   while (true) {
-    const url = `${BASE}/wiki/rest/api/content?spaceKey=${spaceKey}&type=page&expand=body.storage&limit=${limit}&start=${start}`;
-    const res = await fetch(url, {
-      headers: { Authorization: authHeader(), Accept: "application/json" },
-    });
-    if (!res.ok) throw new Error(`Confluence API ${res.status}: ${await res.text()}`);
-    const json = await res.json();
+    const cql = encodeURIComponent(`ancestor = ${pageId} AND type = page`);
+    const json = await cfetch(creds, `${base}/search?cql=${cql}&limit=50&start=${start}`);
+    for (const r of json.results ?? []) {
+      const id = r.content?.id ?? r.id;
+      if (id) ids.push(id);
+    }
+    if (!json._links?.next) break;
+    start += 50;
+  }
 
+  return ids;
+}
+
+async function fetchSpacePagesOAuth(spaceKey: string, creds: ConfluenceCreds): Promise<ConfluencePage[]> {
+  const pages: ConfluencePage[] = [];
+  const base = v1Base(creds);
+  let start = 0;
+
+  while (true) {
+    const cql = encodeURIComponent(`space = "${spaceKey}" AND type = page`);
+    const json = await cfetch(creds, `${base}/search?cql=${cql}&limit=50&start=${start}`);
+    for (const r of json.results ?? []) {
+      const id = r.content?.id ?? r.id;
+      if (!id) continue;
+      try {
+        const page = await cfetch(creds, `${v2Base(creds)}/pages/${id}?body-format=storage`);
+        const text = cleanHtml(page.body?.storage?.value ?? "");
+        if (text.length >= 50) pages.push({ id: page.id, title: page.title, text });
+      } catch (e) {
+        console.warn(`[confluence] skipping page ${id}:`, e);
+      }
+    }
+    if (!json._links?.next) break;
+    start += 50;
+  }
+
+  return pages;
+}
+
+// ── API token: v1 API ─────────────────────────────────────────────────────────
+
+async function fetchPageWithDescendantsV1(pageId: string, creds: ConfluenceCreds): Promise<ConfluencePage[]> {
+  const base = v1Base(creds);
+  const pages: ConfluencePage[] = [];
+
+  const root = await cfetch(creds, `${base}/content/${pageId}?expand=body.storage`);
+  const rootText = cleanHtml(root.body?.storage?.value ?? "");
+  if (rootText.length >= 50) pages.push({ id: root.id, title: root.title, text: rootText });
+
+  let start = 0;
+  while (true) {
+    const cql = encodeURIComponent(`ancestor = ${pageId} AND type = page`);
+    const json = await cfetch(creds, `${base}/search?cql=${cql}&expand=body.storage&limit=50&start=${start}`);
+    for (const r of json.results ?? []) {
+      const page = r.content ?? r;
+      const text = cleanHtml(page.body?.storage?.value ?? "");
+      if (text.length >= 50) pages.push({ id: page.id, title: page.title, text });
+    }
+    if (!json._links?.next) break;
+    start += 50;
+  }
+
+  return pages;
+}
+
+async function fetchSpacePagesV1(spaceKey: string, creds: ConfluenceCreds): Promise<ConfluencePage[]> {
+  const base = v1Base(creds);
+  const pages: ConfluencePage[] = [];
+  let start = 0;
+
+  while (true) {
+    const json = await cfetch(creds, `${base}/content?spaceKey=${spaceKey}&type=page&expand=body.storage&limit=50&start=${start}`);
     for (const page of json.results ?? []) {
       const text = cleanHtml(page.body?.storage?.value ?? "");
       if (text.length > 50) pages.push({ id: page.id, title: page.title, text });
     }
-
     if (!json._links?.next) break;
-    start += limit;
+    start += 50;
   }
 
   return pages;
 }
 
+// ── HTML cleaner ──────────────────────────────────────────────────────────────
+
 export function cleanHtml(html: string): string {
   let t = html;
-  // Drop structured macros entirely (code blocks, panels, status, etc.)
   t = t.replace(/<ac:structured-macro[\s\S]*?<\/ac:structured-macro>/gi, " ");
-  // Drop remaining ac: and ri: custom tags
   t = t.replace(/<\/?ac:[^>]*>/gi, " ");
   t = t.replace(/<\/?ri:[^>]*>/gi, " ");
-  // Replace block-level closing tags with newlines for readability
   t = t.replace(/<\/(p|h[1-6]|li|tr|div|td|th)>/gi, "\n");
   t = t.replace(/<br\s*\/?>/gi, "\n");
-  // Strip remaining HTML tags
   t = t.replace(/<[^>]+>/g, " ");
-  // Decode common HTML entities
   t = t
     .replace(/&amp;/g, "&")
     .replace(/&lt;/g, "<")
@@ -119,7 +188,6 @@ export function cleanHtml(html: string): string {
     .replace(/&quot;/g, '"')
     .replace(/&#39;/g, "'")
     .replace(/&nbsp;/g, " ");
-  // Normalize whitespace
   t = t.replace(/[ \t]+/g, " ").replace(/\n{3,}/g, "\n\n").trim();
   return t;
 }
