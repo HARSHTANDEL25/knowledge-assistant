@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { Building2, Plus, Trash2, UserPlus, ArrowLeft, Loader2, RefreshCw } from "lucide-react";
+import { Building2, Plus, Trash2, UserPlus, ArrowLeft, Loader2, RefreshCw, Link2, CheckCircle2 } from "lucide-react";
 
 const ACCENT = "#FF4747";
 
@@ -14,6 +14,7 @@ export default function AdminPage() {
   const [access, setAccess] = useState<AccessRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [forbidden, setForbidden] = useState(false);
+  const [confluenceConnected, setConfluenceConnected] = useState(false);
 
   // Create KB form
   const [newName, setNewName] = useState("");
@@ -35,6 +36,7 @@ export default function AdminPage() {
     const json = await res.json();
     setKbs(json.kbs ?? []);
     setAccess(json.access ?? []);
+    setConfluenceConnected(json.confluenceConnected ?? false);
     setLoading(false);
   }
 
@@ -71,15 +73,37 @@ export default function AdminPage() {
     const url = spaceUrl[kbId]?.trim();
     if (!url) return;
     setSyncing((s) => ({ ...s, [kbId]: true }));
-    setSyncResult((r) => ({ ...r, [kbId]: "" }));
-    const res = await fetch("/api/admin/sync", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ kb_id: kbId, space_url: url }),
-    });
-    const json = await res.json();
-    setSyncResult((r) => ({ ...r, [kbId]: json.message ?? json.error ?? "Done" }));
-    setSyncing((s) => ({ ...s, [kbId]: false }));
+    setSyncResult((r) => ({ ...r, [kbId]: "Fetching pages from Confluence..." }));
+
+    try {
+      const res = await fetch("/api/admin/sync", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ kb_id: kbId, space_url: url }),
+      });
+
+      const reader = res.body!.getReader();
+      const decoder = new TextDecoder();
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        const text = decoder.decode(value);
+        for (const line of text.split("\n")) {
+          if (!line.startsWith("data: ")) continue;
+          try {
+            const data = JSON.parse(line.slice(6));
+            if (data.message) setSyncResult((r) => ({ ...r, [kbId]: data.message }));
+            if (data.type === "done" || data.type === "error") {
+              setSyncing((s) => ({ ...s, [kbId]: false }));
+            }
+          } catch { /* partial chunk */ }
+        }
+      }
+    } catch (e) {
+      setSyncResult((r) => ({ ...r, [kbId]: `Error: ${String(e)}` }));
+      setSyncing((s) => ({ ...s, [kbId]: false }));
+    }
   }
 
   async function revokeUser(kbId: string, userId: string) {
@@ -129,6 +153,36 @@ export default function AdminPage() {
       </header>
 
       <main className="mx-auto max-w-3xl px-5 py-8 flex flex-col gap-8">
+        {/* Confluence connection */}
+        <section className="rounded-xl border border-[#262B33] bg-[#15181E] p-4">
+          <div className="flex items-center justify-between">
+            <div>
+              <div className="text-sm font-medium">Confluence</div>
+              <div className="text-[11px] text-[#5f6873] mt-0.5">
+                {confluenceConnected ? "Connected — you can sync any space you have access to" : "Connect your Atlassian account to sync project spaces"}
+              </div>
+            </div>
+            <div className="flex items-center gap-3">
+              {confluenceConnected && (
+                <div className="flex items-center gap-1.5 text-xs text-green-400">
+                  <CheckCircle2 size={14} /> Connected
+                </div>
+              )}
+              <a
+                href="/api/auth/confluence"
+                style={{ backgroundColor: confluenceConnected ? undefined : ACCENT }}
+                className={`flex items-center gap-1.5 rounded-lg px-4 py-2 text-sm font-medium ${
+                  confluenceConnected
+                    ? "border border-[#262B33] text-[#8A919C] hover:text-[#E8EAED]"
+                    : "text-white"
+                }`}
+              >
+                <Link2 size={14} /> {confluenceConnected ? "Reconnect" : "Connect Confluence"}
+              </a>
+            </div>
+          </div>
+        </section>
+
         {/* Create project KB */}
         <section>
           <h2 className="mb-4 text-sm font-semibold">Create Project Knowledge Base</h2>
