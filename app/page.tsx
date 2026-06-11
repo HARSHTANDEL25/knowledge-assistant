@@ -154,7 +154,7 @@ export default function Home() {
 
           <div className="flex items-center gap-3">
             {/* Segmented KB switcher */}
-            <div className="flex gap-1 rounded-lg border border-[#262B33] bg-[#15181E] p-1">
+            <div className="flex flex-wrap gap-1 rounded-lg border border-[#262B33] bg-[#15181E] p-1">
               {DEPARTMENTS.map((d) => {
                 const active = kb === d.key;
                 const I = d.Icon;
