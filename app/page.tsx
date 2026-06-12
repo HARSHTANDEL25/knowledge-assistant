@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import Link from "next/link";
-import { ArrowUp, Sparkles, FileText, Users, MonitorSmartphone, Building2, LogOut, FolderKanban, Settings } from "lucide-react";
+import { ArrowUp, Sparkles, FileText, Users, MonitorSmartphone, Building2, LogOut, FolderKanban, Settings, ChevronDown } from "lucide-react";
 import { createClient } from "@/utils/supabase/client";
 
 type Source = { source_file: string; page_number: number | null };
@@ -52,7 +52,19 @@ export default function Home() {
   const [userEmail, setUserEmail] = useState<string | null>(null);
   const [userRole, setUserRole] = useState<string | null>(null);
   const [projectKbs, setProjectKbs] = useState<ProjectKb[]>([]);
+  const [profileOpen, setProfileOpen] = useState(false);
   const endRef = useRef<HTMLDivElement>(null);
+  const profileRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    function handleClickOutside(e: MouseEvent) {
+      if (profileRef.current && !profileRef.current.contains(e.target as Node)) {
+        setProfileOpen(false);
+      }
+    }
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
 
   useEffect(() => {
     const supabase = createClient();
@@ -190,24 +202,59 @@ export default function Home() {
 
             {/* User + admin + logout */}
             {userEmail && (
-              <div className="flex items-center gap-2">
-                <span className="max-w-[140px] truncate text-[11px] text-[#5f6873]">{userEmail}</span>
-                {(userRole === "super_admin" || userRole === "project_admin") && (
-                  <Link
-                    href="/admin"
-                    title="Admin panel"
-                    className="flex h-7 w-7 items-center justify-center rounded-md text-[#5f6873] transition-colors hover:bg-[#1C2026] hover:text-[#E8EAED]"
-                  >
-                    <Settings size={14} />
-                  </Link>
-                )}
+              <div className="relative" ref={profileRef}>
+                {/* Profile pill button */}
                 <button
-                  onClick={handleLogout}
-                  title="Sign out"
-                  className="flex h-7 w-7 items-center justify-center rounded-md text-[#5f6873] transition-colors hover:bg-[#1C2026] hover:text-[#E8EAED]"
+                  onClick={() => setProfileOpen((o) => !o)}
+                  className="flex items-center gap-2 rounded-lg border border-[#262B33] bg-[#15181E] px-2.5 py-1.5 transition-colors hover:border-[#3a414d]"
                 >
-                  <LogOut size={14} />
+                  {/* Avatar initials */}
+                  <div
+                    className="flex h-5 w-5 items-center justify-center rounded-full text-[10px] font-bold text-white"
+                    style={{ backgroundColor: userRole === "super_admin" ? ACCENT : userRole === "project_admin" ? "#5B8DEF" : "#3a414d" }}
+                  >
+                    {userEmail[0].toUpperCase()}
+                  </div>
+                  <span className="max-w-25 truncate text-[11px] text-[#C3C8D0]">{userEmail.split("@")[0]}</span>
+                  <ChevronDown size={11} className={`text-[#5f6873] transition-transform ${profileOpen ? "rotate-180" : ""}`} />
                 </button>
+
+                {/* Dropdown */}
+                {profileOpen && (
+                  <div className="absolute right-0 top-full z-50 mt-1.5 w-52 rounded-xl border border-[#262B33] bg-[#15181E] shadow-xl">
+                    {/* User info */}
+                    <div className="px-3 py-2.5 border-b border-[#262B33]">
+                      <p className="text-[11px] text-[#E8EAED] font-medium truncate">{userEmail}</p>
+                      <p
+                        className="text-[10px] font-semibold mt-0.5"
+                        style={{ color: userRole === "super_admin" ? ACCENT : userRole === "project_admin" ? "#5B8DEF" : "#5f6873" }}
+                      >
+                        {userRole === "super_admin" ? "Super Admin" : userRole === "project_admin" ? "Project Admin" : "Employee"}
+                      </p>
+                    </div>
+
+                    {/* Admin link */}
+                    {(userRole === "super_admin" || userRole === "project_admin") && (
+                      <Link
+                        href="/admin"
+                        onClick={() => setProfileOpen(false)}
+                        className="flex items-center gap-2 px-3 py-2 text-[12px] text-[#8A919C] hover:bg-[#1C2026] hover:text-[#E8EAED] transition-colors"
+                      >
+                        <Settings size={13} />
+                        {userRole === "super_admin" ? "Manage Admins" : "Manage Employees"}
+                      </Link>
+                    )}
+
+                    {/* Sign out */}
+                    <button
+                      onClick={handleLogout}
+                      className="flex w-full items-center gap-2 px-3 py-2 text-[12px] text-[#8A919C] hover:bg-[#1C2026] hover:text-[#FF4747] transition-colors rounded-b-xl"
+                    >
+                      <LogOut size={13} />
+                      Sign out
+                    </button>
+                  </div>
+                )}
               </div>
             )}
           </div>
