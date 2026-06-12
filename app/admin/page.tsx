@@ -25,6 +25,8 @@ export default function AdminPage() {
   const [confluenceConnected, setConfluenceConnected] = useState(false);
   const [isSuperAdmin, setIsSuperAdmin] = useState(false);
   const [changingRole, setChangingRole] = useState<Record<string, boolean>>({});
+  const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
+  const [deletingKb, setDeletingKb] = useState<Record<string, boolean>>({});
 
   // Create KB form
   const [newName, setNewName] = useState("");
@@ -127,6 +129,18 @@ export default function AdminPage() {
       setSyncResult((r) => ({ ...r, [kbId]: `Error: ${String(e)}` }));
       setSyncing((s) => ({ ...s, [kbId]: false }));
     }
+  }
+
+  async function deleteKb(kbId: string) {
+    setDeletingKb((d) => ({ ...d, [kbId]: true }));
+    setConfirmDelete(null);
+    await fetch("/api/admin", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "delete_kb", kb_id: kbId }),
+    });
+    setDeletingKb((d) => ({ ...d, [kbId]: false }));
+    load();
   }
 
   async function revokeUser(kbId: string, userId: string) {
@@ -250,7 +264,39 @@ export default function AdminPage() {
                     <div className="text-sm font-medium">{kb.name}</div>
                     <div className="text-[11px] text-[#5f6873]">slug: {kb.slug}</div>
                   </div>
-                  <span className="text-[11px] text-[#8A919C]">{members.length} member{members.length !== 1 ? "s" : ""}</span>
+                  <div className="flex items-center gap-2">
+                    <span className="text-[11px] text-[#8A919C]">{members.length} member{members.length !== 1 ? "s" : ""}</span>
+                    {isSuperAdmin && (
+                      deletingKb[kb.id] ? (
+                        <Loader2 size={14} className="animate-spin text-[#5f6873]" />
+                      ) : confirmDelete === kb.id ? (
+                        <div className="flex items-center gap-1.5">
+                          <span className="text-[11px] text-[#8A919C]">Delete?</span>
+                          <button
+                            onClick={() => deleteKb(kb.id)}
+                            className="rounded px-2 py-0.5 text-[11px] font-medium text-white"
+                            style={{ backgroundColor: ACCENT }}
+                          >
+                            Yes
+                          </button>
+                          <button
+                            onClick={() => setConfirmDelete(null)}
+                            className="rounded border border-[#262B33] px-2 py-0.5 text-[11px] text-[#8A919C] hover:text-[#E8EAED]"
+                          >
+                            No
+                          </button>
+                        </div>
+                      ) : (
+                        <button
+                          onClick={() => setConfirmDelete(kb.id)}
+                          className="text-[#5f6873] hover:text-[#FF4747] transition-colors"
+                          title="Delete KB"
+                        >
+                          <Trash2 size={14} />
+                        </button>
+                      )
+                    )}
+                  </div>
                 </div>
 
                 {/* Members */}

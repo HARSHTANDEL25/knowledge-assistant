@@ -135,6 +135,21 @@ export async function POST(req: Request) {
     return Response.json({ ok: true });
   }
 
+  // Delete a project KB and all its chunks/documents — super_admin only
+  if (body.action === "delete_kb") {
+    if (admin.role !== "super_admin") {
+      return Response.json({ error: "Forbidden" }, { status: 403 });
+    }
+    const { kb_id } = body;
+    if (!kb_id) return Response.json({ error: "kb_id required" }, { status: 400 });
+    await db.from("chunks").delete().eq("kb_id", kb_id);
+    await db.from("documents").delete().eq("kb_id", kb_id);
+    await db.from("project_access").delete().eq("kb_id", kb_id);
+    const { error } = await db.from("knowledge_bases").delete().eq("id", kb_id);
+    if (error) return Response.json({ error: error.message }, { status: 400 });
+    return Response.json({ ok: true });
+  }
+
   // Change a user's role — super_admin only
   if (body.action === "change_role") {
     if (admin.role !== "super_admin") {
