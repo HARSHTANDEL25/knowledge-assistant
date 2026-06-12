@@ -2,19 +2,29 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { Building2, Plus, Trash2, UserPlus, ArrowLeft, Loader2, RefreshCw, Link2, CheckCircle2 } from "lucide-react";
+import { Building2, Plus, Trash2, UserPlus, ArrowLeft, Loader2, RefreshCw, Link2, CheckCircle2, Users } from "lucide-react";
 
 const ACCENT = "#FF4747";
 
 type Kb = { id: string; name: string; slug: string };
 type AccessRow = { kb_id: string; user_id: string; profiles: { email: string } };
+type UserRow = { id: string; email: string; role: string };
+
+const ROLE_LABELS: Record<string, string> = {
+  employee:      "Employee",
+  project_admin: "Project Admin",
+  super_admin:   "Super Admin",
+};
 
 export default function AdminPage() {
   const [kbs, setKbs] = useState<Kb[]>([]);
   const [access, setAccess] = useState<AccessRow[]>([]);
+  const [users, setUsers] = useState<UserRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [forbidden, setForbidden] = useState(false);
   const [confluenceConnected, setConfluenceConnected] = useState(false);
+  const [isSuperAdmin, setIsSuperAdmin] = useState(false);
+  const [changingRole, setChangingRole] = useState<Record<string, boolean>>({});
 
   // Create KB form
   const [newName, setNewName] = useState("");
@@ -36,8 +46,21 @@ export default function AdminPage() {
     const json = await res.json();
     setKbs(json.kbs ?? []);
     setAccess(json.access ?? []);
+    setUsers(json.users ?? []);
     setConfluenceConnected(json.confluenceConnected ?? false);
+    setIsSuperAdmin((json.users ?? []).length > 0);
     setLoading(false);
+  }
+
+  async function changeRole(userId: string, role: string) {
+    setChangingRole((c) => ({ ...c, [userId]: true }));
+    await fetch("/api/admin", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "change_role", user_id: userId, role }),
+    });
+    setChangingRole((c) => ({ ...c, [userId]: false }));
+    load();
   }
 
   useEffect(() => { load(); }, []);
@@ -291,6 +314,39 @@ export default function AdminPage() {
             );
           })}
         </section>
+
+        {/* User role management — super_admin only */}
+        {isSuperAdmin && (
+          <section className="flex flex-col gap-3">
+            <div className="flex items-center gap-2">
+              <Users size={14} className="text-[#5f6873]" />
+              <h2 className="text-sm font-semibold">Manage User Roles</h2>
+            </div>
+            <div className="rounded-xl border border-[#262B33] bg-[#15181E] overflow-hidden">
+              {users.map((u, i) => (
+                <div
+                  key={u.id}
+                  className={`flex items-center justify-between px-4 py-2.5 ${i !== 0 ? "border-t border-[#262B33]" : ""}`}
+                >
+                  <span className="text-xs text-[#C3C8D0] truncate max-w-[55%]">{u.email}</span>
+                  <div className="flex items-center gap-2">
+                    {changingRole[u.id] && <Loader2 size={12} className="animate-spin text-[#5f6873]" />}
+                    <select
+                      value={u.role}
+                      disabled={changingRole[u.id]}
+                      onChange={(e) => changeRole(u.id, e.target.value)}
+                      className="rounded-md border border-[#262B33] bg-[#0B0D10] px-2 py-1 text-xs text-[#C3C8D0] outline-none focus:border-[#3a414d] disabled:opacity-50"
+                    >
+                      {Object.entries(ROLE_LABELS).map(([val, label]) => (
+                        <option key={val} value={val}>{label}</option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </section>
+        )}
       </main>
     </div>
   );

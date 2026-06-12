@@ -51,7 +51,17 @@ export async function GET() {
     .eq("user_id", admin.user.id)
     .single();
 
-  return Response.json({ kbs: kbs ?? [], access: access ?? [], confluenceConnected: !!tokenRow });
+  // super_admin gets the full user list for role management UI
+  let users: { id: string; email: string; role: string }[] = [];
+  if (admin.role === "super_admin") {
+    const { data: allUsers } = await db
+      .from("profiles")
+      .select("id, email, role")
+      .order("email");
+    users = allUsers ?? [];
+  }
+
+  return Response.json({ kbs: kbs ?? [], access: access ?? [], confluenceConnected: !!tokenRow, users });
 }
 
 // POST /api/admin — create KB, assign, or revoke access
@@ -121,6 +131,24 @@ export async function POST(req: Request) {
       .delete()
       .eq("kb_id", kb_id)
       .eq("user_id", user_id);
+    if (error) return Response.json({ error: error.message }, { status: 400 });
+    return Response.json({ ok: true });
+  }
+
+  // Change a user's role — super_admin only
+  if (body.action === "change_role") {
+    if (admin.role !== "super_admin") {
+      return Response.json({ error: "Forbidden" }, { status: 403 });
+    }
+    const { user_id, role } = body;
+    const VALID_ROLES = ["employee", "project_admin", "super_admin"];
+    if (!user_id || !VALID_ROLES.includes(role)) {
+      return Response.json({ error: "Invalid user_id or role" }, { status: 400 });
+    }
+    const { error } = await db
+      .from("profiles")
+      .update({ role })
+      .eq("id", user_id);
     if (error) return Response.json({ error: error.message }, { status: 400 });
     return Response.json({ ok: true });
   }
