@@ -8,6 +8,9 @@ type ConfluenceCreds =
   | { type: "oauth"; accessToken: string; cloudId: string }
   | { type: "apitoken" };
 
+// Builds v1 API base URL.
+// OAuth → routes through api.atlassian.com gateway (some v1 endpoints return 410 here)
+// API token → hits horizontal.atlassian.net directly (all v1 endpoints work)
 function v1Base(creds: ConfluenceCreds): string {
   if (creds.type === "oauth") {
     return `https://api.atlassian.com/ex/confluence/${creds.cloudId}/wiki/rest/api`;
@@ -15,15 +18,22 @@ function v1Base(creds: ConfluenceCreds): string {
   return `${process.env.CONFLUENCE_BASE_URL}/wiki/rest/api`;
 }
 
+// Builds v2 API base URL. Always routes through api.atlassian.com gateway.
+// Only used for OAuth — v2 endpoints don't have the 410 deprecation issue.
 function v2Base(creds: ConfluenceCreds): string {
   return `https://api.atlassian.com/ex/confluence/${(creds as { cloudId: string }).cloudId}/wiki/api/v2`;
 }
 
+// Builds the Authorization header.
+// OAuth → Bearer token (from confluence_tokens table)
+// API token → Basic base64(email:token) (from env vars)
 function authHeader(creds: ConfluenceCreds): string {
   if (creds.type === "oauth") return `Bearer ${creds.accessToken}`;
   return `Basic ${Buffer.from(`${process.env.CONFLUENCE_EMAIL}:${process.env.CONFLUENCE_TOKEN}`).toString("base64")}`;
 }
 
+// Shared HTTP fetch helper used by all functions.
+// Attaches auth header and throws a clear error on non-200 responses.
 async function cfetch(creds: ConfluenceCreds, url: string) {
   const res = await fetch(url, {
     headers: { Authorization: authHeader(creds), Accept: "application/json" },
@@ -34,6 +44,9 @@ async function cfetch(creds: ConfluenceCreds, url: string) {
 
 export type ConfluencePage = { id: string; title: string; text: string };
 
+// Entry point — called by the sync route.
+// Detects the URL type (page / folder / space) and routes to the right function.
+// Automatically picks OAuth vs API token path based on creds type.
 export async function fetchPagesFromUrl(
   confluenceUrl: string,
   creds: ConfluenceCreds,
@@ -67,6 +80,8 @@ export async function fetchPagesFromUrl(
 // Strategy: use v1 /search?cql=ancestor=X to discover ALL descendants
 // (CQL traverses folders transparently). Fetch each page body via v2.
 
+// OAuth + folder URL.
+// Folders have no body — skips the root, fetches all pages inside via CQL.
 async function fetchDescendantsOfIdOAuth(id: string, creds: ConfluenceCreds): Promise<ConfluencePage[]> {
   const pages: ConfluencePage[] = [];
   const ids = await fetchDescendantIdsViaCql(id, creds);
@@ -82,6 +97,8 @@ async function fetchDescendantsOfIdOAuth(id: string, creds: ConfluenceCreds): Pr
   return pages;
 }
 
+// OAuth + page URL.
+// Fetches root page body via v2, then all descendants via CQL, each body via v2.
 async function fetchPageWithDescendantsOAuth(pageId: string, creds: ConfluenceCreds): Promise<ConfluencePage[]> {
   const pages: ConfluencePage[] = [];
 
@@ -105,6 +122,10 @@ async function fetchPageWithDescendantsOAuth(pageId: string, creds: ConfluenceCr
   return pages;
 }
 
+// CQL search to find ALL descendant page IDs under a page or folder.
+// Uses v1 /search which still works on the OAuth gateway (not deprecated).
+// CQL ancestor=X traverses the full tree including pages inside folders.
+// Returns only IDs — bodies are fetched separately via v2 to avoid 410.
 async function fetchDescendantIdsViaCql(pageId: string, creds: ConfluenceCreds): Promise<string[]> {
   const base = v1Base(creds);
   const ids: string[] = [];
@@ -124,6 +145,8 @@ async function fetchDescendantIdsViaCql(pageId: string, creds: ConfluenceCreds):
   return ids;
 }
 
+// OAuth + space URL.
+// CQL space=KEY finds all pages in the space, fetches each body via v2.
 async function fetchSpacePagesOAuth(spaceKey: string, creds: ConfluenceCreds): Promise<ConfluencePage[]> {
   const pages: ConfluencePage[] = [];
   const base = v1Base(creds);
@@ -152,6 +175,9 @@ async function fetchSpacePagesOAuth(spaceKey: string, creds: ConfluenceCreds): P
 
 // ── API token: v1 API ─────────────────────────────────────────────────────────
 
+// API token + page or folder URL.
+// v1 works fine on direct instance URL — body returned inline with expand=body.storage,
+// no need for a separate v2 fetch per page.
 async function fetchPageWithDescendantsV1(pageId: string, creds: ConfluenceCreds): Promise<ConfluencePage[]> {
   const base = v1Base(creds);
   const pages: ConfluencePage[] = [];
@@ -176,6 +202,8 @@ async function fetchPageWithDescendantsV1(pageId: string, creds: ConfluenceCreds
   return pages;
 }
 
+// API token + space URL.
+// GET /content?spaceKey=KEY returns all pages with body inline.
 async function fetchSpacePagesV1(spaceKey: string, creds: ConfluenceCreds): Promise<ConfluencePage[]> {
   const base = v1Base(creds);
   const pages: ConfluencePage[] = [];
@@ -196,6 +224,9 @@ async function fetchSpacePagesV1(spaceKey: string, creds: ConfluenceCreds): Prom
 
 // ── HTML cleaner ──────────────────────────────────────────────────────────────
 
+// Converts Confluence storage-format HTML to plain text for chunking.
+// Strips Atlassian-specific tags (ac:, ri:), decodes HTML entities,
+// preserves paragraph structure as newlines.
 export function cleanHtml(html: string): string {
   let t = html;
   t = t.replace(/<ac:structured-macro[\s\S]*?<\/ac:structured-macro>/gi, " ");
