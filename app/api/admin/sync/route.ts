@@ -8,7 +8,7 @@ import { embed } from "@/lib/embeddings";
 export const maxDuration = 60;
 
 const ADMIN_ROLES = ["super_admin", "project_admin"];
-const BATCH = 32;
+const EMBED_BATCH = 64;  // larger global batch = fewer HF round trips
 
 async function assertAdmin() {
   const cookieStore = await cookies();
@@ -80,57 +80,69 @@ export async function POST(req: Request) {
           return;
         }
 
-        sse(controller, { type: "count", total: pages.length, message: `Found ${pages.length} pages. Embedding...` });
+        sse(controller, { type: "count", total: pages.length, message: `Found ${pages.length} pages. Chunking...` });
 
-        let totalChunks = 0;
+        // Phase 1: chunk all pages + insert document rows (no HF calls yet)
+        type WorkItem = { pageId: string; title: string; docId: string; chunks: string[] };
+        const work: WorkItem[] = [];
 
-        for (let i = 0; i < pages.length; i++) {
-          const page = pages[i];
-          sse(controller, {
-            type: "progress",
-            current: i + 1,
-            total: pages.length,
-            message: `Processing ${i + 1}/${pages.length}: ${page.title}`,
-          });
-
+        for (const page of pages) {
           try {
             await db.from("documents").delete().eq("kb_id", kb_id).eq("source", page.title);
-
             const { data: doc, error: docErr } = await db
               .from("documents")
               .insert({ kb_id, source: page.title, title: page.title, status: "processing", is_current: true })
               .select()
               .single();
             if (docErr) throw docErr;
-
             const chunks = await chunkText(page.text);
-            if (chunks.length === 0) continue;
-
-            for (let j = 0; j < chunks.length; j += BATCH) {
-              const batch = chunks.slice(j, j + BATCH);
-              const vecs = await embed(batch);
-              const { error: chunkErr } = await db.from("chunks").insert(
-                batch.map((content, k) => ({
-                  document_id: doc.id,
-                  kb_id,
-                  content,
-                  embedding: vecs[k],
-                  metadata: {
-                    source_file: page.title,
-                    page_number: null,
-                    confluence_page_id: page.id,
-                    origin: "confluence",
-                  },
-                })),
-              );
-              if (chunkErr) throw chunkErr;
-            }
-
-            await db.from("documents").update({ status: "ready" }).eq("id", doc.id);
-            totalChunks += chunks.length;
+            if (chunks.length > 0) work.push({ pageId: page.id, title: page.title, docId: doc.id, chunks });
+            else await db.from("documents").update({ status: "ready" }).eq("id", doc.id);
           } catch (e) {
-            await db.from("documents").update({ status: "failed" }).eq("kb_id", kb_id).eq("source", page.title);
-            console.error(`Failed to ingest "${page.title}":`, e);
+            console.error(`Chunk phase failed for "${page.title}":`, e);
+          }
+        }
+
+        // Phase 2: embed ALL chunks globally in large batches — far fewer HF round trips
+        const allChunks = work.flatMap((w) => w.chunks);
+        const allVecs: number[][] = [];
+
+        sse(controller, { type: "status", message: `Embedding ${allChunks.length} chunks across ${work.length} pages...` });
+
+        for (let i = 0; i < allChunks.length; i += EMBED_BATCH) {
+          sse(controller, {
+            type: "progress",
+            current: Math.min(i + EMBED_BATCH, allChunks.length),
+            total: allChunks.length,
+            message: `Embedding ${Math.min(i + EMBED_BATCH, allChunks.length)}/${allChunks.length} chunks...`,
+          });
+          const vecs = await embed(allChunks.slice(i, i + EMBED_BATCH));
+          allVecs.push(...vecs);
+        }
+
+        // Phase 3: insert chunks per page using the pre-computed embeddings
+        let totalChunks = 0;
+        let vecOffset = 0;
+
+        for (const w of work) {
+          try {
+            const vecs = allVecs.slice(vecOffset, vecOffset + w.chunks.length);
+            vecOffset += w.chunks.length;
+            const { error: chunkErr } = await db.from("chunks").insert(
+              w.chunks.map((content, k) => ({
+                document_id: w.docId,
+                kb_id,
+                content,
+                embedding: vecs[k],
+                metadata: { source_file: w.title, page_number: null, confluence_page_id: w.pageId, origin: "confluence" },
+              })),
+            );
+            if (chunkErr) throw chunkErr;
+            await db.from("documents").update({ status: "ready" }).eq("id", w.docId);
+            totalChunks += w.chunks.length;
+          } catch (e) {
+            await db.from("documents").update({ status: "failed" }).eq("id", w.docId);
+            console.error(`Insert phase failed for "${w.title}":`, e);
           }
         }
 

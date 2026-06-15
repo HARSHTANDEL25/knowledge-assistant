@@ -80,21 +80,40 @@ export async function fetchPagesFromUrl(
 // Strategy: use v1 /search?cql=ancestor=X to discover ALL descendants
 // (CQL traverses folders transparently). Fetch each page body via v2.
 
+// Fetch multiple page bodies concurrently — 8 at a time to stay under
+// Confluence's ~10 req/s rate limit.
+const FETCH_CONCURRENCY = 8;
+
+async function fetchPageBodiesOAuth(ids: string[], creds: ConfluenceCreds): Promise<ConfluencePage[]> {
+  const pages: ConfluencePage[] = [];
+  const queue = [...ids];
+
+  // Sliding window — spawn FETCH_CONCURRENCY workers, each pulls from the queue
+  // until empty. A slot opens the moment any request finishes, not at batch end.
+  async function worker() {
+    while (queue.length > 0) {
+      const id = queue.shift()!;
+      try {
+        const page = await cfetch(creds, `${v2Base(creds)}/pages/${id}?body-format=storage`);
+        const text = cleanHtml(page.body?.storage?.value ?? "");
+        if (text.length >= 50) pages.push({ id: page.id, title: page.title, text });
+      } catch (e) {
+        console.warn(`[confluence] skipping page ${id}:`, e);
+      }
+    }
+  }
+
+  await Promise.all(
+    Array.from({ length: Math.min(FETCH_CONCURRENCY, ids.length) }, worker)
+  );
+  return pages;
+}
+
 // OAuth + folder URL.
 // Folders have no body — skips the root, fetches all pages inside via CQL.
 async function fetchDescendantsOfIdOAuth(id: string, creds: ConfluenceCreds): Promise<ConfluencePage[]> {
-  const pages: ConfluencePage[] = [];
   const ids = await fetchDescendantIdsViaCql(id, creds);
-  for (const pid of ids) {
-    try {
-      const page = await cfetch(creds, `${v2Base(creds)}/pages/${pid}?body-format=storage`);
-      const text = cleanHtml(page.body?.storage?.value ?? "");
-      if (text.length >= 50) pages.push({ id: page.id, title: page.title, text });
-    } catch (e) {
-      console.warn(`[confluence] skipping page ${pid}:`, e);
-    }
-  }
-  return pages;
+  return fetchPageBodiesOAuth(ids, creds);
 }
 
 // OAuth + page URL.
@@ -107,19 +126,10 @@ async function fetchPageWithDescendantsOAuth(pageId: string, creds: ConfluenceCr
   const rootText = cleanHtml(root.body?.storage?.value ?? "");
   if (rootText.length >= 50) pages.push({ id: root.id, title: root.title, text: rootText });
 
-  // All descendants via v1 CQL — ancestor query sees through folders
+  // All descendants via v1 CQL — fetch bodies in parallel batches
   const ids = await fetchDescendantIdsViaCql(pageId, creds);
-  for (const id of ids) {
-    try {
-      const page = await cfetch(creds, `${v2Base(creds)}/pages/${id}?body-format=storage`);
-      const text = cleanHtml(page.body?.storage?.value ?? "");
-      if (text.length >= 50) pages.push({ id: page.id, title: page.title, text });
-    } catch (e) {
-      console.warn(`[confluence] skipping page ${id}:`, e);
-    }
-  }
-
-  return pages;
+  const descendants = await fetchPageBodiesOAuth(ids, creds);
+  return [...pages, ...descendants];
 }
 
 // CQL search to find ALL descendant page IDs under a page or folder.
@@ -148,29 +158,24 @@ async function fetchDescendantIdsViaCql(pageId: string, creds: ConfluenceCreds):
 // OAuth + space URL.
 // CQL space=KEY finds all pages in the space, fetches each body via v2.
 async function fetchSpacePagesOAuth(spaceKey: string, creds: ConfluenceCreds): Promise<ConfluencePage[]> {
-  const pages: ConfluencePage[] = [];
   const base = v1Base(creds);
+  const ids: string[] = [];
   let start = 0;
 
+  // First collect all page IDs via CQL pagination
   while (true) {
     const cql = encodeURIComponent(`space = "${spaceKey}" AND type = page`);
     const json = await cfetch(creds, `${base}/search?cql=${cql}&limit=50&start=${start}`);
     for (const r of json.results ?? []) {
       const id = r.content?.id ?? r.id;
-      if (!id) continue;
-      try {
-        const page = await cfetch(creds, `${v2Base(creds)}/pages/${id}?body-format=storage`);
-        const text = cleanHtml(page.body?.storage?.value ?? "");
-        if (text.length >= 50) pages.push({ id: page.id, title: page.title, text });
-      } catch (e) {
-        console.warn(`[confluence] skipping page ${id}:`, e);
-      }
+      if (id) ids.push(id);
     }
     if (!json._links?.next) break;
     start += 50;
   }
 
-  return pages;
+  // Then fetch all bodies in parallel batches
+  return fetchPageBodiesOAuth(ids, creds);
 }
 
 // ── API token: v1 API ─────────────────────────────────────────────────────────
