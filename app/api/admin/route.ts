@@ -3,6 +3,7 @@ import { createClient } from "@/utils/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 
 const ADMIN_ROLES = ["super_admin", "project_admin"];
+const VALID_ROLES = ["employee", "project_admin", "super_admin"];
 
 async function assertAdmin() {
   const cookieStore = await cookies();
@@ -18,6 +19,12 @@ async function assertAdmin() {
   return { user, role: profile.role as string };
 }
 
+// Shared ownership check — project_admin can only touch KBs they created
+async function assertKbOwnership(db: ReturnType<typeof createAdminClient>, kbId: string, userId: string) {
+  const { data: kb } = await db.from("knowledge_bases").select("created_by").eq("id", kbId).single();
+  return kb?.created_by === userId;
+}
+
 // GET /api/admin — list project KBs with their members
 // super_admin sees all; project_admin sees only their own KBs
 export async function GET() {
@@ -25,15 +32,15 @@ export async function GET() {
   if (!admin) return Response.json({ error: "Forbidden" }, { status: 403 });
 
   const db = createAdminClient();
-  const query = db
+  // Bug fix: reassign query so the .eq() filter is actually applied
+  let query = db
     .from("knowledge_bases")
     .select("id, name, slug, created_by")
     .eq("type", "project")
     .order("name");
 
-  // project_admin only sees KBs they created
   if (admin.role === "project_admin") {
-    query.eq("created_by", admin.user.id);
+    query = query.eq("created_by", admin.user.id);
   }
 
   const { data: kbs } = await query;
@@ -61,7 +68,7 @@ export async function GET() {
     users = allUsers ?? [];
   }
 
-  return Response.json({ kbs: kbs ?? [], access: access ?? [], confluenceConnected: !!tokenRow, users });
+  return Response.json({ kbs: kbs ?? [], access: access ?? [], confluenceConnected: !!tokenRow, users, callerRole: admin.role });
 }
 
 // POST /api/admin — create KB, assign, or revoke access
@@ -78,10 +85,10 @@ export async function POST(req: Request) {
     if (!name || !slug) return Response.json({ error: "name and slug required" }, { status: 400 });
     const { data, error } = await db
       .from("knowledge_bases")
-      .upsert({ name, slug, type: "project", created_by: admin.user.id }, { onConflict: "slug" })
+      .insert({ name: name.trim(), slug: slug.trim(), type: "project", created_by: admin.user.id })
       .select()
       .single();
-    if (error) return Response.json({ error: error.message }, { status: 400 });
+    if (error) return Response.json({ error: "Slug already taken — choose a different one" }, { status: 400 });
     return Response.json(data);
   }
 
@@ -89,15 +96,8 @@ export async function POST(req: Request) {
   // project_admin can only assign to KBs they own
   if (body.action === "assign") {
     const { kb_id, email } = body;
-    if (admin.role === "project_admin") {
-      const { data: kb } = await db
-        .from("knowledge_bases")
-        .select("created_by")
-        .eq("id", kb_id)
-        .single();
-      if (!kb || kb.created_by !== admin.user.id) {
-        return Response.json({ error: "Forbidden" }, { status: 403 });
-      }
+    if (admin.role === "project_admin" && !(await assertKbOwnership(db, kb_id, admin.user.id))) {
+      return Response.json({ error: "Forbidden" }, { status: 403 });
     }
     const { data: profile } = await db
       .from("profiles")
@@ -116,15 +116,8 @@ export async function POST(req: Request) {
   // project_admin can only revoke from KBs they own
   if (body.action === "revoke") {
     const { kb_id, user_id } = body;
-    if (admin.role === "project_admin") {
-      const { data: kb } = await db
-        .from("knowledge_bases")
-        .select("created_by")
-        .eq("id", kb_id)
-        .single();
-      if (!kb || kb.created_by !== admin.user.id) {
-        return Response.json({ error: "Forbidden" }, { status: 403 });
-      }
+    if (admin.role === "project_admin" && !(await assertKbOwnership(db, kb_id, admin.user.id))) {
+      return Response.json({ error: "Forbidden" }, { status: 403 });
     }
     const { error } = await db
       .from("project_access")
@@ -135,13 +128,26 @@ export async function POST(req: Request) {
     return Response.json({ ok: true });
   }
 
-  // Delete a project KB and all its chunks/documents — super_admin only
-  if (body.action === "delete_kb") {
-    if (admin.role !== "super_admin") {
+  // Rename a KB — super_admin can rename any; project_admin can rename their own
+  if (body.action === "update_kb") {
+    const { kb_id, name } = body;
+    if (!kb_id || !name?.trim()) return Response.json({ error: "kb_id and name required" }, { status: 400 });
+    if (admin.role === "project_admin" && !(await assertKbOwnership(db, kb_id, admin.user.id))) {
       return Response.json({ error: "Forbidden" }, { status: 403 });
     }
+    const { error } = await db.from("knowledge_bases").update({ name: name.trim() }).eq("id", kb_id);
+    if (error) return Response.json({ error: error.message }, { status: 400 });
+    return Response.json({ ok: true });
+  }
+
+  // Delete a KB and all its data — super_admin can delete any; project_admin can delete their own
+  if (body.action === "delete_kb") {
     const { kb_id } = body;
     if (!kb_id) return Response.json({ error: "kb_id required" }, { status: 400 });
+    if (admin.role === "project_admin" && !(await assertKbOwnership(db, kb_id, admin.user.id))) {
+      return Response.json({ error: "Forbidden" }, { status: 403 });
+    }
+    // Delete in dependency order — chunks first, then documents, then access, then KB
     await db.from("chunks").delete().eq("kb_id", kb_id);
     await db.from("documents").delete().eq("kb_id", kb_id);
     await db.from("project_access").delete().eq("kb_id", kb_id);
@@ -156,7 +162,6 @@ export async function POST(req: Request) {
       return Response.json({ error: "Forbidden" }, { status: 403 });
     }
     const { user_id, role } = body;
-    const VALID_ROLES = ["employee", "project_admin", "super_admin"];
     if (!user_id || !VALID_ROLES.includes(role)) {
       return Response.json({ error: "Invalid user_id or role" }, { status: 400 });
     }

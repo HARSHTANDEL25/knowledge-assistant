@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { Building2, Plus, Trash2, UserPlus, ArrowLeft, Loader2, RefreshCw, Link2, CheckCircle2, Users } from "lucide-react";
+import { Building2, Plus, Trash2, UserPlus, ArrowLeft, Loader2, RefreshCw, Link2, CheckCircle2, Users, Pencil, Check, X } from "lucide-react";
 
 const ACCENT = "#FF4747";
 
@@ -27,6 +27,11 @@ export default function AdminPage() {
   const [changingRole, setChangingRole] = useState<Record<string, boolean>>({});
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
   const [deletingKb, setDeletingKb] = useState<Record<string, boolean>>({});
+  const [createError, setCreateError] = useState<string | null>(null);
+  const [assignError, setAssignError] = useState<Record<string, string>>({});
+  const [editingKb, setEditingKb] = useState<string | null>(null);
+  const [editName, setEditName] = useState<Record<string, string>>({});
+  const [savingKb, setSavingKb] = useState<Record<string, boolean>>({});
 
   // Create KB form
   const [newName, setNewName] = useState("");
@@ -50,7 +55,7 @@ export default function AdminPage() {
     setAccess(json.access ?? []);
     setUsers(json.users ?? []);
     setConfluenceConnected(json.confluenceConnected ?? false);
-    setIsSuperAdmin((json.users ?? []).length > 0);
+    setIsSuperAdmin(json.callerRole === "super_admin");
     setLoading(false);
   }
 
@@ -70,12 +75,18 @@ export default function AdminPage() {
   async function createKb(e: React.FormEvent) {
     e.preventDefault();
     setCreating(true);
-    await fetch("/api/admin", {
+    setCreateError(null);
+    const res = await fetch("/api/admin", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ action: "create_kb", name: newName, slug: newSlug }),
     });
-    setNewName(""); setNewSlug("");
+    if (!res.ok) {
+      const json = await res.json();
+      setCreateError(json.error ?? "Failed to create KB");
+    } else {
+      setNewName(""); setNewSlug("");
+    }
     setCreating(false);
     load();
   }
@@ -84,12 +95,18 @@ export default function AdminPage() {
     const email = assignEmail[kbId]?.trim();
     if (!email) return;
     setAssigning((a) => ({ ...a, [kbId]: true }));
-    await fetch("/api/admin", {
+    setAssignError((e) => ({ ...e, [kbId]: "" }));
+    const res = await fetch("/api/admin", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ action: "assign", kb_id: kbId, email }),
     });
-    setAssignEmail((a) => ({ ...a, [kbId]: "" }));
+    if (!res.ok) {
+      const json = await res.json();
+      setAssignError((e) => ({ ...e, [kbId]: json.error ?? "Failed to assign user" }));
+    } else {
+      setAssignEmail((a) => ({ ...a, [kbId]: "" }));
+    }
     setAssigning((a) => ({ ...a, [kbId]: false }));
     load();
   }
@@ -140,6 +157,20 @@ export default function AdminPage() {
       body: JSON.stringify({ action: "delete_kb", kb_id: kbId }),
     });
     setDeletingKb((d) => ({ ...d, [kbId]: false }));
+    load();
+  }
+
+  async function updateKb(kbId: string) {
+    const name = editName[kbId]?.trim();
+    if (!name) return;
+    setSavingKb((s) => ({ ...s, [kbId]: true }));
+    await fetch("/api/admin", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "update_kb", kb_id: kbId, name }),
+    });
+    setSavingKb((s) => ({ ...s, [kbId]: false }));
+    setEditingKb(null);
     load();
   }
 
@@ -247,6 +278,7 @@ export default function AdminPage() {
               {creating ? <Loader2 size={14} className="animate-spin" /> : <><Plus size={14} /> Create</>}
             </button>
           </form>
+          {createError && <p className="mt-2 text-xs text-[#FF4747]">{createError}</p>}
         </section>
 
         {/* Project KBs list */}
@@ -260,41 +292,75 @@ export default function AdminPage() {
             return (
               <div key={kb.id} className="rounded-xl border border-[#262B33] bg-[#15181E] p-4">
                 <div className="mb-3 flex items-center justify-between">
-                  <div>
-                    <div className="text-sm font-medium">{kb.name}</div>
-                    <div className="text-[11px] text-[#5f6873]">slug: {kb.slug}</div>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <span className="text-[11px] text-[#8A919C]">{members.length} member{members.length !== 1 ? "s" : ""}</span>
-                    {isSuperAdmin && (
-                      deletingKb[kb.id] ? (
-                        <Loader2 size={14} className="animate-spin text-[#5f6873]" />
-                      ) : confirmDelete === kb.id ? (
-                        <div className="flex items-center gap-1.5">
-                          <span className="text-[11px] text-[#8A919C]">Delete?</span>
-                          <button
-                            onClick={() => deleteKb(kb.id)}
-                            className="rounded px-2 py-0.5 text-[11px] font-medium text-white"
-                            style={{ backgroundColor: ACCENT }}
-                          >
-                            Yes
-                          </button>
-                          <button
-                            onClick={() => setConfirmDelete(null)}
-                            className="rounded border border-[#262B33] px-2 py-0.5 text-[11px] text-[#8A919C] hover:text-[#E8EAED]"
-                          >
-                            No
-                          </button>
-                        </div>
-                      ) : (
+                  <div className="flex-1 min-w-0 mr-3">
+                    {editingKb === kb.id ? (
+                      <div className="flex items-center gap-2">
+                        <input
+                          autoFocus
+                          value={editName[kb.id] ?? kb.name}
+                          onChange={(e) => setEditName((n) => ({ ...n, [kb.id]: e.target.value }))}
+                          onKeyDown={(e) => { if (e.key === "Enter") updateKb(kb.id); if (e.key === "Escape") setEditingKb(null); }}
+                          className="flex-1 rounded-md border border-[#3a414d] bg-[#0B0D10] px-2 py-1 text-sm text-[#E8EAED] outline-none focus:border-[#5f6873]"
+                        />
                         <button
-                          onClick={() => setConfirmDelete(kb.id)}
-                          className="text-[#5f6873] hover:text-[#FF4747] transition-colors"
-                          title="Delete KB"
+                          onClick={() => updateKb(kb.id)}
+                          disabled={savingKb[kb.id]}
+                          title="Save"
+                          className="flex items-center justify-center rounded-md p-1 text-green-400 hover:bg-[#1e2730] disabled:opacity-50"
                         >
-                          <Trash2 size={14} />
+                          {savingKb[kb.id] ? <Loader2 size={14} className="animate-spin" /> : <Check size={14} />}
                         </button>
-                      )
+                        <button
+                          onClick={() => setEditingKb(null)}
+                          title="Cancel"
+                          className="flex items-center justify-center rounded-md p-1 text-[#5f6873] hover:bg-[#1e2730] hover:text-[#E8EAED]"
+                        >
+                          <X size={14} />
+                        </button>
+                      </div>
+                    ) : (
+                      <div className="flex items-center gap-2">
+                        <span className="text-sm font-medium">{kb.name}</span>
+                        <button
+                          onClick={() => { setEditingKb(kb.id); setEditName((n) => ({ ...n, [kb.id]: kb.name })); }}
+                          title="Rename"
+                          className="flex items-center justify-center rounded-md p-1 text-[#5f6873] hover:bg-[#1e2730] hover:text-[#E8EAED] transition-colors"
+                        >
+                          <Pencil size={13} />
+                        </button>
+                      </div>
+                    )}
+                    <div className="text-[11px] text-[#5f6873] mt-0.5">slug: {kb.slug}</div>
+                  </div>
+                  <div className="flex items-center gap-2 shrink-0">
+                    <span className="text-[11px] text-[#8A919C]">{members.length} member{members.length !== 1 ? "s" : ""}</span>
+                    {deletingKb[kb.id] ? (
+                      <Loader2 size={14} className="animate-spin text-[#5f6873]" />
+                    ) : confirmDelete === kb.id ? (
+                      <div className="flex items-center gap-1.5">
+                        <span className="text-[11px] text-[#8A919C]">Delete?</span>
+                        <button
+                          onClick={() => deleteKb(kb.id)}
+                          className="rounded px-2 py-0.5 text-[11px] font-medium text-white"
+                          style={{ backgroundColor: ACCENT }}
+                        >
+                          Yes
+                        </button>
+                        <button
+                          onClick={() => setConfirmDelete(null)}
+                          className="rounded border border-[#262B33] px-2 py-0.5 text-[11px] text-[#8A919C] hover:text-[#E8EAED]"
+                        >
+                          No
+                        </button>
+                      </div>
+                    ) : (
+                      <button
+                        onClick={() => setConfirmDelete(kb.id)}
+                        className="text-[#5f6873] hover:text-[#FF4747] transition-colors"
+                        title="Delete KB"
+                      >
+                        <Trash2 size={14} />
+                      </button>
                     )}
                   </div>
                 </div>
@@ -333,6 +399,7 @@ export default function AdminPage() {
                     {assigning[kb.id] ? <Loader2 size={12} className="animate-spin" /> : <><UserPlus size={12} /> Add</>}
                   </button>
                 </div>
+                {assignError[kb.id] && <p className="mt-1.5 text-[11px] text-[#FF4747]">{assignError[kb.id]}</p>}
 
                 {/* Confluence sync */}
                 <div className="mt-3 border-t border-[#262B33] pt-3">
