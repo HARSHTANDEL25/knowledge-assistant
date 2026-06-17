@@ -42,7 +42,17 @@ async function cfetch(creds: ConfluenceCreds, url: string) {
   return res.json();
 }
 
-export type ConfluencePage = { id: string; title: string; text: string };
+export type ConfluencePage = { id: string; title: string; text: string; url: string };
+
+// Build an absolute, user-facing page URL from the API response _links.
+// Prefer base+webui (clean URL incl. the title slug); fall back to the pageId
+// redirect when _links is unavailable. Used to make citations click-through.
+function buildPageUrl(links: { base?: string; webui?: string } | undefined, id: string): string {
+  if (links?.base && links?.webui) return `${links.base}${links.webui}`;
+  const root = (process.env.CONFLUENCE_BASE_URL ?? "").replace(/\/+$/, "");
+  if (links?.webui && root) return `${root}/wiki${links.webui}`;
+  return root ? `${root}/wiki/pages/viewpage.action?pageId=${id}` : "";
+}
 
 // Entry point — called by the sync route.
 // Detects the URL type (page / folder / space) and routes to the right function.
@@ -95,8 +105,8 @@ async function fetchPageBodiesOAuth(ids: string[], creds: ConfluenceCreds): Prom
       const id = queue.shift()!;
       try {
         const page = await cfetch(creds, `${v2Base(creds)}/pages/${id}?body-format=storage`);
-        const text = cleanHtml(page.body?.storage?.value ?? "");
-        if (text.length >= 50) pages.push({ id: page.id, title: page.title, text });
+        const text = cleanHtml(await resolveUserMentions(page.body?.storage?.value ?? "", creds));
+        if (text.length >= 50) pages.push({ id: page.id, title: page.title, text, url: buildPageUrl(page._links, page.id) });
       } catch (e) {
         console.warn(`[confluence] skipping page ${id}:`, e);
       }
@@ -123,8 +133,8 @@ async function fetchPageWithDescendantsOAuth(pageId: string, creds: ConfluenceCr
 
   // Root page body via v2
   const root = await cfetch(creds, `${v2Base(creds)}/pages/${pageId}?body-format=storage`);
-  const rootText = cleanHtml(root.body?.storage?.value ?? "");
-  if (rootText.length >= 50) pages.push({ id: root.id, title: root.title, text: rootText });
+  const rootText = cleanHtml(await resolveUserMentions(root.body?.storage?.value ?? "", creds));
+  if (rootText.length >= 50) pages.push({ id: root.id, title: root.title, text: rootText, url: buildPageUrl(root._links, root.id) });
 
   // All descendants via v1 CQL — fetch bodies in parallel batches
   const ids = await fetchDescendantIdsViaCql(pageId, creds);
@@ -188,8 +198,8 @@ async function fetchPageWithDescendantsV1(pageId: string, creds: ConfluenceCreds
   const pages: ConfluencePage[] = [];
 
   const root = await cfetch(creds, `${base}/content/${pageId}?expand=body.storage`);
-  const rootText = cleanHtml(root.body?.storage?.value ?? "");
-  if (rootText.length >= 50) pages.push({ id: root.id, title: root.title, text: rootText });
+  const rootText = cleanHtml(await resolveUserMentions(root.body?.storage?.value ?? "", creds));
+  if (rootText.length >= 50) pages.push({ id: root.id, title: root.title, text: rootText, url: buildPageUrl(root._links, root.id) });
 
   let start = 0;
   while (true) {
@@ -197,8 +207,8 @@ async function fetchPageWithDescendantsV1(pageId: string, creds: ConfluenceCreds
     const json = await cfetch(creds, `${base}/search?cql=${cql}&expand=body.storage&limit=50&start=${start}`);
     for (const r of json.results ?? []) {
       const page = r.content ?? r;
-      const text = cleanHtml(page.body?.storage?.value ?? "");
-      if (text.length >= 50) pages.push({ id: page.id, title: page.title, text });
+      const text = cleanHtml(await resolveUserMentions(page.body?.storage?.value ?? "", creds));
+      if (text.length >= 50) pages.push({ id: page.id, title: page.title, text, url: buildPageUrl(page._links, page.id) });
     }
     if (!json._links?.next) break;
     start += 50;
@@ -217,8 +227,8 @@ async function fetchSpacePagesV1(spaceKey: string, creds: ConfluenceCreds): Prom
   while (true) {
     const json = await cfetch(creds, `${base}/content?spaceKey=${spaceKey}&type=page&expand=body.storage&limit=50&start=${start}`);
     for (const page of json.results ?? []) {
-      const text = cleanHtml(page.body?.storage?.value ?? "");
-      if (text.length > 50) pages.push({ id: page.id, title: page.title, text });
+      const text = cleanHtml(await resolveUserMentions(page.body?.storage?.value ?? "", creds));
+      if (text.length > 50) pages.push({ id: page.id, title: page.title, text, url: buildPageUrl(page._links, page.id) });
     }
     if (!json._links?.next) break;
     start += 50;
@@ -227,13 +237,69 @@ async function fetchSpacePagesV1(spaceKey: string, creds: ConfluenceCreds): Prom
   return pages;
 }
 
+// ── User-mention resolution ─────────────────────────────────────────────────
+// Confluence stores @mentions as <ri:user ri:account-id="..."/> with NO inline
+// text — the display name is resolved at render time. cleanHtml strips the tag,
+// so tables of people (e.g. the certification lists) lost every name. Resolve
+// account-ids to display names via the user API; cache across the whole sync run.
+const userNameCache = new Map<string, string>();
+
+export async function resolveUserMentions(html: string, creds: ConfluenceCreds): Promise<string> {
+  const re = /<ri:user\b[^>]*ri:account-id="([^"]+)"[^>]*\/?>/gi;
+  const ids = new Set<string>();
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(html)) !== null) ids.add(m[1]);
+  if (ids.size === 0) return html;
+
+  await Promise.all(
+    [...ids]
+      .filter((id) => !userNameCache.has(id))
+      .map(async (id) => {
+        try {
+          const u = await cfetch(creds, `${v1Base(creds)}/user?accountId=${encodeURIComponent(id)}`);
+          userNameCache.set(id, u.displayName ?? u.publicName ?? "");
+        } catch {
+          userNameCache.set(id, ""); // leave blank rather than emit a raw account-id
+        }
+      }),
+  );
+
+  return html.replace(re, (_full, id) => ` ${userNameCache.get(id) ?? ""} `);
+}
+
 // ── HTML cleaner ──────────────────────────────────────────────────────────────
+
+// Convert HTML tables to pipe-delimited rows so each record stays on ONE line.
+// The old behaviour (</td> and </tr> both -> "\n") shredded every cell onto its
+// own line, destroying row associations AND scattering the data across chunks
+// that contain none of the table's topical words — which is exactly why
+// "list of <X>" table lookups returned nothing. Runs before generic tag stripping.
+function tablesToMarkdown(html: string): string {
+  return html.replace(/<table\b[\s\S]*?<\/table>/gi, (table) => {
+    const rows: string[] = [];
+    const trRe = /<tr\b[^>]*>([\s\S]*?)<\/tr>/gi;
+    let tr: RegExpExecArray | null;
+    while ((tr = trRe.exec(table)) !== null) {
+      const cells: string[] = [];
+      const cellRe = /<(td|th)\b[^>]*>([\s\S]*?)<\/\1>/gi;
+      let cell: RegExpExecArray | null;
+      while ((cell = cellRe.exec(tr[1])) !== null) {
+        cells.push(cell[2].replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim());
+      }
+      if (cells.length) rows.push(`| ${cells.join(" | ")} |`);
+    }
+    return `\n${rows.join("\n")}\n`;
+  });
+}
 
 // Converts Confluence storage-format HTML to plain text for chunking.
 // Strips Atlassian-specific tags (ac:, ri:), decodes HTML entities,
 // preserves paragraph structure as newlines.
 export function cleanHtml(html: string): string {
-  let t = html;
+  // Confluence date elements store the date in an attribute, not as text.
+  // Extract it BEFORE any tag stripping (incl. table-cell flattening) or it's lost.
+  let t = html.replace(/<time\b[^>]*\bdatetime="([^"]+)"[^>]*\/?>/gi, " $1 ");
+  t = tablesToMarkdown(t);
   t = t.replace(/<ac:structured-macro[\s\S]*?<\/ac:structured-macro>/gi, " ");
   t = t.replace(/<\/?ac:[^>]*>/gi, " ");
   t = t.replace(/<\/?ri:[^>]*>/gi, " ");

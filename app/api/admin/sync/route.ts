@@ -83,7 +83,7 @@ export async function POST(req: Request) {
         sse(controller, { type: "count", total: pages.length, message: `Found ${pages.length} pages. Chunking...` });
 
         // Phase 1: chunk all pages + insert document rows (no HF calls yet)
-        type WorkItem = { pageId: string; title: string; docId: string; chunks: string[] };
+        type WorkItem = { pageId: string; title: string; url: string; docId: string; chunks: string[] };
         const work: WorkItem[] = [];
 
         for (const page of pages) {
@@ -95,8 +95,14 @@ export async function POST(req: Request) {
               .select()
               .single();
             if (docErr) throw docErr;
-            const chunks = await chunkText(page.text);
-            if (chunks.length > 0) work.push({ pageId: page.id, title: page.title, docId: doc.id, chunks });
+            // Prefix every chunk with the page title so each chunk carries a
+            // topical anchor for BOTH search legs. Table-row chunks (names,
+            // dates) otherwise contain none of the query's words ("sitecore",
+            // "certified", ...) and never match. The fts generated column is
+            // built from content, so this benefits keyword search for free.
+            const rawChunks = await chunkText(page.text);
+            const chunks = rawChunks.map((c) => `${page.title}\n\n${c}`);
+            if (chunks.length > 0) work.push({ pageId: page.id, title: page.title, url: page.url, docId: doc.id, chunks });
             else await db.from("documents").update({ status: "ready" }).eq("id", doc.id);
           } catch (e) {
             console.error(`Chunk phase failed for "${page.title}":`, e);
@@ -134,7 +140,7 @@ export async function POST(req: Request) {
                 kb_id,
                 content,
                 embedding: vecs[k],
-                metadata: { source_file: w.title, page_number: null, confluence_page_id: w.pageId, origin: "confluence" },
+                metadata: { source_file: w.title, page_number: null, confluence_page_id: w.pageId, source_url: w.url, origin: "confluence" },
               })),
             );
             if (chunkErr) throw chunkErr;

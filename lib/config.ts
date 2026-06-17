@@ -10,7 +10,7 @@ export const CHUNK_SIZE = 1000;
 export const CHUNK_OVERLAP = 200;
 export const SEPARATORS = ["\n\n", "\n", " ", ""];
 
-export const RETRIEVAL_TOP_K = 5;
+export const RETRIEVAL_TOP_K = 8;
 
 // Groq fallback chain (ported from the Streamlit app). On 429, try the next.
 export const FALLBACK_MODELS = [

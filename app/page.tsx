@@ -5,10 +5,10 @@ import { useRouter } from "next/navigation";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import Link from "next/link";
-import { ArrowUp, Sparkles, FileText, Users, MonitorSmartphone, Building2, LogOut, FolderKanban, Settings, ChevronDown } from "lucide-react";
+import { ArrowUp, Sparkles, FileText, Users, MonitorSmartphone, Building2, LogOut, FolderKanban, Settings, ChevronDown, ExternalLink } from "lucide-react";
 import { createClient } from "@/utils/supabase/client";
 
-type Source = { source_file: string; page_number: number | null };
+type Source = { source_file: string; page_number: number | null; source_url?: string | null };
 type Msg = { role: "user" | "assistant"; content: string; sources?: Source[] };
 type ProjectKb = { id: string; name: string; slug: string };
 
@@ -323,19 +323,35 @@ export default function Home() {
                           </span>
                           {m.sources && m.sources.length > 0 && (
                             <div className="mt-3 flex flex-wrap gap-2">
-                              {m.sources.map((s, j) => (
-                                <span
-                                  key={j}
-                                  className="flex items-center gap-1.5 rounded-md border border-[#262B33] bg-[#15181E] px-2 py-1 text-[12px] text-[#8A919C]"
-                                  title={s.source_file}
-                                >
-                                  <FileText size={12} />
-                                  <span className="max-w-[200px] truncate">{s.source_file}</span>
-                                  {s.page_number != null && (
-                                    <span className="text-[#5f6873]">· p.{s.page_number}</span>
-                                  )}
-                                </span>
-                              ))}
+                              {m.sources.map((s, j) => {
+                                const base = "flex items-center gap-1.5 rounded-md border border-[#262B33] bg-[#15181E] px-2 py-1 text-[12px] text-[#8A919C]";
+                                const inner = (
+                                  <>
+                                    <FileText size={12} />
+                                    <span className="max-w-[200px] truncate">{s.source_file}</span>
+                                    {s.page_number != null && (
+                                      <span className="text-[#5f6873]">· p.{s.page_number}</span>
+                                    )}
+                                    {s.source_url && <ExternalLink size={11} className="shrink-0 text-[#5f6873]" />}
+                                  </>
+                                );
+                                return s.source_url ? (
+                                  <a
+                                    key={j}
+                                    href={s.source_url}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    title={s.source_file}
+                                    className={`${base} transition-colors hover:border-[#3a414d] hover:text-[#C3C8D0]`}
+                                  >
+                                    {inner}
+                                  </a>
+                                ) : (
+                                  <span key={j} className={base} title={s.source_file}>
+                                    {inner}
+                                  </span>
+                                );
+                              })}
                             </div>
                           )}
                         </>
