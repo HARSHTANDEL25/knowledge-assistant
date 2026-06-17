@@ -324,16 +324,15 @@ export default function Home() {
                           {m.sources && m.sources.length > 0 && (
                             <div className="mt-3 flex flex-wrap gap-2">
                               {m.sources.map((s, j) => {
-                                const base = "flex items-center gap-1.5 rounded-md border border-[#262B33] bg-[#15181E] px-2 py-1 text-[12px] text-[#8A919C]";
-                                const inner = (
-                                  <>
-                                    <FileText size={12} />
-                                    <span className="max-w-[200px] truncate">{s.source_file}</span>
+                                const card = "flex flex-col gap-0.5 rounded-md border border-[#262B33] bg-[#15181E] px-2.5 py-1.5 text-[12px]";
+                                const titleRow = (
+                                  <span className="flex items-center gap-1.5 text-[#C3C8D0]">
+                                    <FileText size={12} className="shrink-0 text-[#8A919C]" />
+                                    <span className="max-w-[220px] truncate">{s.source_file}</span>
                                     {s.page_number != null && (
                                       <span className="text-[#5f6873]">· p.{s.page_number}</span>
                                     )}
-                                    {s.source_url && <ExternalLink size={11} className="shrink-0 text-[#5f6873]" />}
-                                  </>
+                                  </span>
                                 );
                                 return s.source_url ? (
                                   <a
@@ -342,13 +341,17 @@ export default function Home() {
                                     target="_blank"
                                     rel="noopener noreferrer"
                                     title={s.source_file}
-                                    className={`${base} transition-colors hover:border-[#3a414d] hover:text-[#C3C8D0]`}
+                                    className={`${card} group transition-colors hover:border-[#3a414d]`}
                                   >
-                                    {inner}
+                                    {titleRow}
+                                    <span className="flex items-center gap-1.5 text-[14px] text-[#5f6873] transition-colors group-hover:text-[#7fa8ff]">
+                                      <ExternalLink size={12} className="shrink-0" />
+                                      View in Confluence (click to open)
+                                    </span>
                                   </a>
                                 ) : (
-                                  <span key={j} className={base} title={s.source_file}>
-                                    {inner}
+                                  <span key={j} className={card} title={s.source_file}>
+                                    {titleRow}
                                   </span>
                                 );
                               })}

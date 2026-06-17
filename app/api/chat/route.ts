@@ -7,6 +7,23 @@ import { FALLBACK_MODELS } from "@/lib/config";
 
 export const runtime = "nodejs";
 
+// Turn a provider error into a short, user-facing line. Rate-limit / daily
+// token-cap errors get a "try again in X" hint parsed from Groq's message.
+function friendlyError(err: unknown): string {
+  const s = String(err ?? "");
+  const isRate =
+    (err as { statusCode?: number } | null)?.statusCode === 429 ||
+    /rate.?limit|tokens per day|\bTPD\b/i.test(s);
+  if (isRate) {
+    const m = s.match(/try again in ([0-9hms.]+)/i);
+    const when = m ? m[1].replace(/\.$/, "").replace(/\.\d+s/, "s") : null;
+    return `The daily AI usage limit has been reached for all available models${
+      when ? ` — please try again in about ${when}` : ", please try again later"
+    }.`;
+  }
+  return "The AI service is temporarily unavailable. Please try again in a few minutes.";
+}
+
 export async function POST(req: Request) {
   const { question, kb } = await req.json();
   if (!question || !kb) {
@@ -43,31 +60,42 @@ Always respond in a professional, helpful, and friendly tone. If the answer is f
   const stream = new ReadableStream({
     async start(controller) {
       let produced = false;
+      let lastErr: unknown = null;
       for (const model of FALLBACK_MODELS) {
+        // streamText does NOT throw streaming errors to the iterator — it
+        // reports them via onError and ends the stream silently. Capture it
+        // here so the catch can actually fall back to the next model.
+        let streamErr: unknown = null;
         try {
           const result = streamText({
             model: groq(model),
             system,
             prompt,
             temperature: 0.1,
+            onError: ({ error }) => { streamErr = error; },
           });
           for await (const part of result.textStream) {
             controller.enqueue(encoder.encode(part));
             produced = true;
           }
+          if (streamErr) throw streamErr; // surface the swallowed error
           controller.close();
           return;
         } catch (e) {
-          // Only fall back to the next model if nothing was streamed yet.
-          if (!produced && String(e).includes("429")) continue;
-          controller.enqueue(encoder.encode(`\n\n[error: ${String(e)}]`));
-          controller.close();
-          return;
+          lastErr = e;
+          // Already mid-response — can't switch models without duplicating text.
+          if (produced) {
+            controller.enqueue(encoder.encode("\n\n_[Response interrupted — please retry.]_"));
+            controller.close();
+            return;
+          }
+          // Nothing streamed yet — try the next model on ANY failure
+          // (rate limit, decommissioned model, 5xx, …), not just 429.
+          continue;
         }
       }
-      controller.enqueue(
-        encoder.encode("All models are rate limited. Please try again in a moment."),
-      );
+      // Every model failed before producing output — tell the user why.
+      controller.enqueue(encoder.encode(friendlyError(lastErr)));
       controller.close();
     },
   });

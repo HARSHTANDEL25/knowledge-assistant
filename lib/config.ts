@@ -12,12 +12,17 @@ export const SEPARATORS = ["\n\n", "\n", " ", ""];
 
 export const RETRIEVAL_TOP_K = 8;
 
-// Groq fallback chain (ported from the Streamlit app). On 429, try the next.
+// Groq fallback chain. On ANY failure (rate limit, decommissioned, 5xx) the
+// chat route advances to the next model. Each model has its OWN daily token
+// quota, and mixing families (llama / gpt-oss / qwen) spreads load across
+// separate rate-limit buckets — so a TPD exhaustion on one still leaves the
+// rest available. Verify ids against `npx tsx scripts/test-models.ts`;
+// gemma2-9b-it and mixtral-8x7b-32768 were decommissioned by Groq.
 export const FALLBACK_MODELS = [
-  "llama-3.3-70b-versatile",
-  "llama-3.1-8b-instant",
-  "gemma2-9b-it",
-  "mixtral-8x7b-32768",
+  "llama-3.3-70b-versatile", // primary — most capable
+  "llama-3.1-8b-instant",    // separate quota, fast
+  "openai/gpt-oss-120b",     // different family → separate bucket, strong
+  "qwen/qwen3-32b",          // last-resort, separate bucket
 ];
 
 // HF moved off the old api-inference.huggingface.co host (now dead in DNS).
