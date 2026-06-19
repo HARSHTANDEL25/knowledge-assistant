@@ -30,9 +30,17 @@ export async function POST(req: Request) {
     return new Response("Missing question or kb", { status: 400 });
   }
 
-  // User-JWT client (anon when not logged in). RLS lets anon read hr/it only.
+  // User-JWT client. RLS still scopes what each user can retrieve, but the
+  // endpoint itself now requires a session — it is NOT public. Previously an
+  // anonymous request could read hr/it content and burn LLM quota, because
+  // middleware deliberately skips /api/* route gating.
   const cookieStore = await cookies();
   const supabase = createClient(cookieStore);
+
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) {
+    return new Response("Unauthorized — please sign in.", { status: 401 });
+  }
 
   let kbName = kb;
   let context = "";

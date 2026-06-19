@@ -50,6 +50,8 @@ export default function Home() {
   const [input, setInput] = useState("");
   const [busy, setBusy] = useState(false);
   const [userEmail, setUserEmail] = useState<string | null>(null);
+  const [userId, setUserId] = useState<string | null>(null);
+  const [historyLoaded, setHistoryLoaded] = useState(false);
   const [userRole, setUserRole] = useState<string | null>(null);
   const [projectKbs, setProjectKbs] = useState<ProjectKb[]>([]);
   const [profileOpen, setProfileOpen] = useState(false);
@@ -71,6 +73,7 @@ export default function Home() {
     supabase.auth.getUser().then(async ({ data }) => {
       if (!data.user) return;
       setUserEmail(data.user.email ?? null);
+      setUserId(data.user.id);
       const { data: profile } = await supabase
         .from("profiles")
         .select("role")
@@ -82,7 +85,33 @@ export default function Home() {
     });
   }, []);
 
+  // Restore chat history from localStorage on login (this browser only).
+  useEffect(() => {
+    if (!userId) return;
+    try {
+      const raw = localStorage.getItem(`ka_history_${userId}`);
+      if (raw) setHistories(JSON.parse(raw));
+    } catch {
+      /* ignore corrupt / unavailable storage */
+    }
+    setHistoryLoaded(true);
+  }, [userId]);
+
+  // Persist whenever history changes — but only after the initial restore, so
+  // we never overwrite stored history with the empty initial state.
+  useEffect(() => {
+    if (!userId || !historyLoaded) return;
+    try {
+      localStorage.setItem(`ka_history_${userId}`, JSON.stringify(histories));
+    } catch {
+      /* quota exceeded / unavailable — non-fatal */
+    }
+  }, [histories, userId, historyLoaded]);
+
   async function handleLogout() {
+    // History stays in localStorage (keyed by user id) so it reappears when this
+    // user signs back in on this browser. Not cleared on logout — a different
+    // user reads their own key, so there's no cross-user leak.
     const supabase = createClient();
     await supabase.auth.signOut();
     router.push("/login");
