@@ -18,7 +18,7 @@ function coreQuery(q: string): string {
   return s || q;
 }
 
-export type Source = { source_file: string; page_number: number | null; source_url?: string | null };
+export type Source = { source_file: string; pages: number[]; source_url?: string | null };
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type Supa = any;
@@ -53,8 +53,9 @@ export async function retrieve(supabase: Supa, kbSlug: string, question: string)
   // before source_url was stored (they still carry confluence_page_id).
   const cfBase = (process.env.CONFLUENCE_BASE_URL ?? "").replace(/\/+$/, "");
 
-  const seen = new Set<string>();
-  const citations: Source[] = [];
+  // Group citations by source file so one PDF shows as a single card with all
+  // its cited pages merged, rather than one card per page.
+  const byFile = new Map<string, { source_file: string; pages: Set<number>; source_url: string | null }>();
   for (const d of docs) {
     const sf: string = d.metadata?.source_file ?? "unknown";
     const pg: number | null = d.metadata?.page_number ?? null;
@@ -62,11 +63,18 @@ export async function retrieve(supabase: Supa, kbSlug: string, question: string)
     const url: string | null =
       d.metadata?.source_url ??
       (pid && cfBase ? `${cfBase}/wiki/pages/viewpage.action?pageId=${pid}` : null);
-    const key = `${sf}|${pg}`;
-    if (!seen.has(key)) {
-      seen.add(key);
-      citations.push({ source_file: sf, page_number: pg, source_url: url });
+    let entry = byFile.get(sf);
+    if (!entry) {
+      entry = { source_file: sf, pages: new Set<number>(), source_url: url };
+      byFile.set(sf, entry);
     }
+    if (pg != null) entry.pages.add(pg);
+    if (!entry.source_url && url) entry.source_url = url; // backfill url if a later chunk has it
   }
+  const citations: Source[] = [...byFile.values()].map((e) => ({
+    source_file: e.source_file,
+    pages: [...e.pages].sort((a, b) => a - b),
+    source_url: e.source_url,
+  }));
   return { kbName: kb.name as string, context, citations };
 }

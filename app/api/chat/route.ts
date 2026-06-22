@@ -2,7 +2,7 @@ import { cookies } from "next/headers";
 import { createClient } from "@/utils/supabase/server";
 import { createGroq } from "@ai-sdk/groq";
 import { streamText } from "ai";
-import { retrieve } from "@/lib/retrieval";
+import { retrieve, type Source } from "@/lib/retrieval";
 import { FALLBACK_MODELS } from "@/lib/config";
 
 export const runtime = "nodejs";
@@ -44,7 +44,7 @@ export async function POST(req: Request) {
 
   let kbName = kb;
   let context = "";
-  let citations: { source_file: string; page_number: number | null }[] = [];
+  let citations: Source[] = [];
   try {
     const r = await retrieve(supabase, kb, question);
     kbName = r.kbName;
