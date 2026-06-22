@@ -55,13 +55,23 @@ export default function Home() {
   const [userRole, setUserRole] = useState<string | null>(null);
   const [projectKbs, setProjectKbs] = useState<ProjectKb[]>([]);
   const [profileOpen, setProfileOpen] = useState(false);
+  const [kbOpen, setKbOpen] = useState(false);
+  const [projectsOpen, setProjectsOpen] = useState(false);
   const endRef = useRef<HTMLDivElement>(null);
   const profileRef = useRef<HTMLDivElement>(null);
+  const kbRef = useRef<HTMLDivElement>(null);
+  const projectsRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     function handleClickOutside(e: MouseEvent) {
       if (profileRef.current && !profileRef.current.contains(e.target as Node)) {
         setProfileOpen(false);
+      }
+      if (kbRef.current && !kbRef.current.contains(e.target as Node)) {
+        setKbOpen(false);
+      }
+      if (projectsRef.current && !projectsRef.current.contains(e.target as Node)) {
+        setProjectsOpen(false);
       }
     }
     document.addEventListener("mousedown", handleClickOutside);
@@ -125,6 +135,7 @@ export default function Home() {
     suggestions: [] as string[],
   };
   const messages = histories[kb] ?? [];
+  const ActiveKbIcon = staticDept?.Icon ?? FolderKanban;
 
   useEffect(() => {
     endRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -179,59 +190,139 @@ export default function Home() {
     <div className="flex h-screen flex-col bg-[#0B0D10] text-[#E8EAED]">
       {/* Header */}
       <header className="border-b border-[#262B33]">
-        <div className="mx-auto flex max-w-3xl items-center justify-between px-5 py-3">
-          <div className="flex items-center gap-2.5">
+        <div className="mx-auto flex max-w-3xl items-center justify-between gap-2 px-3 py-3 md:px-5">
+          <div className="flex min-w-0 items-center gap-2.5">
             <div
-              className="flex h-7 w-7 items-center justify-center rounded-md"
+              className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md"
               style={{ backgroundColor: ACCENT }}
             >
               <Building2 size={16} className="text-white" />
             </div>
-            <div className="leading-tight">
-              <div className="text-sm font-semibold">Horizontal</div>
-              <div className="text-[11px] text-[#8A919C]">Knowledge Assistant</div>
+            <div className="min-w-0 leading-tight">
+              <div className="truncate text-sm font-semibold">Horizontal</div>
+              <div className="truncate text-[11px] text-[#8A919C]">Knowledge Assistant</div>
             </div>
           </div>
 
-          <div className="flex items-center gap-3">
-            {/* Segmented KB switcher */}
-            <div className="flex flex-wrap gap-1 rounded-lg border border-[#262B33] bg-[#15181E] p-1">
-              {DEPARTMENTS.map((d) => {
-                const active = kb === d.key;
-                const I = d.Icon;
-                return (
+          <div className="flex shrink-0 items-center gap-2 md:gap-3">
+            {/* KB switcher — desktop: department tabs + projects dropdown */}
+            <div className="hidden md:flex items-center gap-2">
+              <div className="flex gap-1 rounded-lg border border-[#262B33] bg-[#15181E] p-1">
+                {DEPARTMENTS.map((d) => {
+                  const active = kb === d.key;
+                  const I = d.Icon;
+                  return (
+                    <button
+                      key={d.key}
+                      onClick={() => setKb(d.key)}
+                      style={active ? { backgroundColor: ACCENT } : undefined}
+                      className={`flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${
+                        active ? "text-white" : "text-[#8A919C] hover:text-[#E8EAED]"
+                      }`}
+                    >
+                      <I size={15} /> {d.name}
+                    </button>
+                  );
+                })}
+              </div>
+
+              {projectKbs.length > 0 && (
+                <div className="relative" ref={projectsRef}>
                   <button
-                    key={d.key}
-                    onClick={() => setKb(d.key)}
-                    style={active ? { backgroundColor: ACCENT } : undefined}
-                    className={`flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${
-                      active ? "text-white" : "text-[#8A919C] hover:text-[#E8EAED]"
+                    onClick={() => setProjectsOpen((o) => !o)}
+                    style={projectDept ? { backgroundColor: ACCENT } : undefined}
+                    className={`flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-sm font-medium transition-colors ${
+                      projectDept
+                        ? "border-transparent text-white"
+                        : "border-[#262B33] bg-[#15181E] text-[#8A919C] hover:text-[#E8EAED]"
                     }`}
                   >
-                    <I size={15} /> {d.name}
+                    <FolderKanban size={15} className="shrink-0" />
+                    <span className="max-w-32 truncate">{projectDept?.name ?? "Projects"}</span>
+                    <ChevronDown size={13} className={`shrink-0 transition-transform ${projectsOpen ? "rotate-180" : ""}`} />
                   </button>
-                );
-              })}
-              {projectKbs.map((p) => {
-                const active = kb === p.slug;
-                return (
-                  <button
-                    key={p.slug}
-                    onClick={() => setKb(p.slug)}
-                    style={active ? { backgroundColor: ACCENT } : undefined}
-                    className={`flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${
-                      active ? "text-white" : "text-[#8A919C] hover:text-[#E8EAED]"
-                    }`}
-                  >
-                    <FolderKanban size={15} /> {p.name}
-                  </button>
-                );
-              })}
+
+                  {projectsOpen && (
+                    <div className="absolute right-0 top-full z-50 mt-1.5 max-h-[60vh] w-56 overflow-y-auto rounded-xl border border-[#262B33] bg-[#15181E] py-1 shadow-xl">
+                      {projectKbs.map((p) => {
+                        const active = kb === p.slug;
+                        return (
+                          <button
+                            key={p.slug}
+                            onClick={() => {
+                              setKb(p.slug);
+                              setProjectsOpen(false);
+                            }}
+                            className={`flex w-full items-center gap-2 px-3 py-2 text-[12px] transition-colors ${
+                              active ? "bg-[#1C2026] text-white" : "text-[#8A919C] hover:bg-[#1C2026] hover:text-[#E8EAED]"
+                            }`}
+                          >
+                            <FolderKanban size={14} className="shrink-0" style={active ? { color: ACCENT } : undefined} />
+                            <span className="truncate">{p.name}</span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+
+            {/* KB switcher — mobile dropdown */}
+            <div className="relative md:hidden" ref={kbRef}>
+              <button
+                onClick={() => setKbOpen((o) => !o)}
+                className="flex items-center gap-1.5 rounded-lg border border-[#262B33] bg-[#15181E] px-3 py-1.5 text-sm font-medium text-[#E8EAED] transition-colors hover:border-[#3a414d]"
+              >
+                <ActiveKbIcon size={15} style={{ color: ACCENT }} />
+                <span className="max-w-32 truncate">{dept.name}</span>
+                <ChevronDown size={13} className={`text-[#5f6873] transition-transform ${kbOpen ? "rotate-180" : ""}`} />
+              </button>
+
+              {kbOpen && (
+                <div className="absolute left-0 top-full z-50 mt-1.5 max-h-[60vh] w-52 overflow-y-auto rounded-xl border border-[#262B33] bg-[#15181E] py-1 shadow-xl">
+                  {DEPARTMENTS.map((d) => {
+                    const active = kb === d.key;
+                    const I = d.Icon;
+                    return (
+                      <button
+                        key={d.key}
+                        onClick={() => {
+                          setKb(d.key);
+                          setKbOpen(false);
+                        }}
+                        className={`flex w-full items-center gap-2 px-3 py-2 text-[12px] transition-colors ${
+                          active ? "bg-[#1C2026] text-white" : "text-[#8A919C] hover:bg-[#1C2026] hover:text-[#E8EAED]"
+                        }`}
+                      >
+                        <I size={14} style={active ? { color: ACCENT } : undefined} /> {d.name}
+                      </button>
+                    );
+                  })}
+                  {projectKbs.map((p) => {
+                    const active = kb === p.slug;
+                    return (
+                      <button
+                        key={p.slug}
+                        onClick={() => {
+                          setKb(p.slug);
+                          setKbOpen(false);
+                        }}
+                        className={`flex w-full items-center gap-2 px-3 py-2 text-[12px] transition-colors ${
+                          active ? "bg-[#1C2026] text-white" : "text-[#8A919C] hover:bg-[#1C2026] hover:text-[#E8EAED]"
+                        }`}
+                      >
+                        <FolderKanban size={14} style={active ? { color: ACCENT } : undefined} /> {p.name}
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
             </div>
 
             {/* User + admin + logout */}
             {userEmail && (
-              <div className="relative" ref={profileRef}>
+              <div className="relative shrink-0" ref={profileRef}>
                 {/* Profile pill button */}
                 <button
                   onClick={() => setProfileOpen((o) => !o)}
@@ -353,13 +444,13 @@ export default function Home() {
                           {m.sources && m.sources.length > 0 && (
                             <div className="mt-3 flex flex-wrap gap-2">
                               {m.sources.map((s, j) => {
-                                const card = "flex flex-col gap-0.5 rounded-md border border-[#262B33] bg-[#15181E] px-2.5 py-1.5 text-[12px]";
+                                const card = "flex min-w-0 max-w-full flex-col gap-0.5 rounded-md border border-[#262B33] bg-[#15181E] px-2.5 py-1.5 text-[12px]";
                                 const titleRow = (
-                                  <span className="flex items-center gap-1.5 text-[#C3C8D0]">
+                                  <span className="flex min-w-0 items-center gap-1.5 text-[#C3C8D0]">
                                     <FileText size={12} className="shrink-0 text-[#8A919C]" />
-                                    <span className="max-w-[220px] truncate">{s.source_file}</span>
+                                    <span className="truncate">{s.source_file}</span>
                                     {s.page_number != null && (
-                                      <span className="text-[#5f6873]">· p.{s.page_number}</span>
+                                      <span className="shrink-0 text-[#5f6873]">· p.{s.page_number}</span>
                                     )}
                                   </span>
                                 );
@@ -373,9 +464,9 @@ export default function Home() {
                                     className={`${card} group transition-colors hover:border-[#3a414d]`}
                                   >
                                     {titleRow}
-                                    <span className="flex items-center gap-1.5 text-[14px] text-[#5f6873] transition-colors group-hover:text-[#7fa8ff]">
+                                    <span className="flex min-w-0 items-center gap-1.5 text-[14px] text-[#5f6873] transition-colors group-hover:text-[#7fa8ff]">
                                       <ExternalLink size={12} className="shrink-0" />
-                                      View in Confluence (click to open)
+                                      <span className="truncate">View in Confluence (click to open)</span>
                                     </span>
                                   </a>
                                 ) : (
