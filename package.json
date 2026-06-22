@@ -11,7 +11,8 @@
     "ingest": "tsx scripts/ingest.ts",
     "ingest:dir": "tsx scripts/ingest-dir.ts",
     "parity": "tsx scripts/parity-check.ts",
-    "sync:sharepoint": "tsx scripts/sync-sharepoint.ts"
+    "sync:sharepoint": "tsx scripts/sync-sharepoint.ts",
+    "sync:gdrive": "tsx scripts/sync-gdrive.ts"
   },
   "dependencies": {
     "@ai-sdk/groq": "^3.0.39",
