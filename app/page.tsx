@@ -5,10 +5,26 @@ import { useRouter } from "next/navigation";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import Link from "next/link";
-import { ArrowUp, Sparkles, FileText, Users, MonitorSmartphone, Building2, LogOut, FolderKanban, Settings, ChevronDown, ExternalLink } from "lucide-react";
+import {
+  ArrowUp,
+  Sparkles,
+  FileText,
+  Users,
+  MonitorSmartphone,
+  Building2,
+  LogOut,
+  FolderKanban,
+  Settings,
+  ChevronDown,
+  ExternalLink,
+} from "lucide-react";
 import { createClient } from "@/utils/supabase/client";
 
-type Source = { source_file: string; page_number: number | null; source_url?: string | null };
+type Source = {
+  source_file: string;
+  pages: number[];
+  source_url?: string | null;
+};
 type Msg = { role: "user" | "assistant"; content: string; sources?: Source[] };
 type ProjectKb = { id: string; name: string; slug: string };
 
@@ -46,7 +62,10 @@ const MD =
 export default function Home() {
   const router = useRouter();
   const [kb, setKb] = useState<string>("hr");
-  const [histories, setHistories] = useState<Record<string, Msg[]>>({ hr: [], it: [] });
+  const [histories, setHistories] = useState<Record<string, Msg[]>>({
+    hr: [],
+    it: [],
+  });
   const [input, setInput] = useState("");
   const [busy, setBusy] = useState(false);
   const [userEmail, setUserEmail] = useState<string | null>(null);
@@ -64,13 +83,19 @@ export default function Home() {
 
   useEffect(() => {
     function handleClickOutside(e: MouseEvent) {
-      if (profileRef.current && !profileRef.current.contains(e.target as Node)) {
+      if (
+        profileRef.current &&
+        !profileRef.current.contains(e.target as Node)
+      ) {
         setProfileOpen(false);
       }
       if (kbRef.current && !kbRef.current.contains(e.target as Node)) {
         setKbOpen(false);
       }
-      if (projectsRef.current && !projectsRef.current.contains(e.target as Node)) {
+      if (
+        projectsRef.current &&
+        !projectsRef.current.contains(e.target as Node)
+      ) {
         setProjectsOpen(false);
       }
     }
@@ -149,7 +174,11 @@ export default function Home() {
     const kbAtSend = kb;
     setHistories((h) => ({
       ...h,
-      [kbAtSend]: [...(h[kbAtSend] ?? []), { role: "user", content: q }, { role: "assistant", content: "" }],
+      [kbAtSend]: [
+        ...(h[kbAtSend] ?? []),
+        { role: "user", content: q },
+        { role: "assistant", content: "" },
+      ],
     }));
 
     try {
@@ -159,7 +188,9 @@ export default function Home() {
         body: JSON.stringify({ question: q, kb: kbAtSend }),
       });
       const srcHeader = res.headers.get("x-sources");
-      const sources: Source[] = srcHeader ? JSON.parse(decodeURIComponent(srcHeader)) : [];
+      const sources: Source[] = srcHeader
+        ? JSON.parse(decodeURIComponent(srcHeader))
+        : [];
       if (!res.body) throw new Error("no body");
 
       const reader = res.body.getReader();
@@ -178,7 +209,10 @@ export default function Home() {
     } catch {
       setHistories((h) => {
         const arr = [...h[kbAtSend]];
-        arr[arr.length - 1] = { role: "assistant", content: "Something went wrong. Please try again." };
+        arr[arr.length - 1] = {
+          role: "assistant",
+          content: "Something went wrong. Please try again.",
+        };
         return { ...h, [kbAtSend]: arr };
       });
     } finally {
@@ -200,7 +234,9 @@ export default function Home() {
             </div>
             <div className="min-w-0 leading-tight">
               <div className="truncate text-sm font-semibold">Horizontal</div>
-              <div className="truncate text-[11px] text-[#8A919C]">Knowledge Assistant</div>
+              <div className="truncate text-[11px] text-[#8A919C]">
+                Knowledge Assistant
+              </div>
             </div>
           </div>
 
@@ -217,7 +253,9 @@ export default function Home() {
                       onClick={() => setKb(d.key)}
                       style={active ? { backgroundColor: ACCENT } : undefined}
                       className={`flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${
-                        active ? "text-white" : "text-[#8A919C] hover:text-[#E8EAED]"
+                        active
+                          ? "text-white"
+                          : "text-[#8A919C] hover:text-[#E8EAED]"
                       }`}
                     >
                       <I size={15} /> {d.name}
@@ -230,7 +268,9 @@ export default function Home() {
                 <div className="relative" ref={projectsRef}>
                   <button
                     onClick={() => setProjectsOpen((o) => !o)}
-                    style={projectDept ? { backgroundColor: ACCENT } : undefined}
+                    style={
+                      projectDept ? { backgroundColor: ACCENT } : undefined
+                    }
                     className={`flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-sm font-medium transition-colors ${
                       projectDept
                         ? "border-transparent text-white"
@@ -238,8 +278,13 @@ export default function Home() {
                     }`}
                   >
                     <FolderKanban size={15} className="shrink-0" />
-                    <span className="max-w-32 truncate">{projectDept?.name ?? "Projects"}</span>
-                    <ChevronDown size={13} className={`shrink-0 transition-transform ${projectsOpen ? "rotate-180" : ""}`} />
+                    <span className="max-w-32 truncate">
+                      {projectDept?.name ?? "Projects"}
+                    </span>
+                    <ChevronDown
+                      size={13}
+                      className={`shrink-0 transition-transform ${projectsOpen ? "rotate-180" : ""}`}
+                    />
                   </button>
 
                   {projectsOpen && (
@@ -254,10 +299,16 @@ export default function Home() {
                               setProjectsOpen(false);
                             }}
                             className={`flex w-full items-center gap-2 px-3 py-2 text-[12px] transition-colors ${
-                              active ? "bg-[#1C2026] text-white" : "text-[#8A919C] hover:bg-[#1C2026] hover:text-[#E8EAED]"
+                              active
+                                ? "bg-[#1C2026] text-white"
+                                : "text-[#8A919C] hover:bg-[#1C2026] hover:text-[#E8EAED]"
                             }`}
                           >
-                            <FolderKanban size={14} className="shrink-0" style={active ? { color: ACCENT } : undefined} />
+                            <FolderKanban
+                              size={14}
+                              className="shrink-0"
+                              style={active ? { color: ACCENT } : undefined}
+                            />
                             <span className="truncate">{p.name}</span>
                           </button>
                         );
@@ -276,7 +327,10 @@ export default function Home() {
               >
                 <ActiveKbIcon size={15} style={{ color: ACCENT }} />
                 <span className="max-w-32 truncate">{dept.name}</span>
-                <ChevronDown size={13} className={`text-[#5f6873] transition-transform ${kbOpen ? "rotate-180" : ""}`} />
+                <ChevronDown
+                  size={13}
+                  className={`text-[#5f6873] transition-transform ${kbOpen ? "rotate-180" : ""}`}
+                />
               </button>
 
               {kbOpen && (
@@ -292,10 +346,16 @@ export default function Home() {
                           setKbOpen(false);
                         }}
                         className={`flex w-full items-center gap-2 px-3 py-2 text-[12px] transition-colors ${
-                          active ? "bg-[#1C2026] text-white" : "text-[#8A919C] hover:bg-[#1C2026] hover:text-[#E8EAED]"
+                          active
+                            ? "bg-[#1C2026] text-white"
+                            : "text-[#8A919C] hover:bg-[#1C2026] hover:text-[#E8EAED]"
                         }`}
                       >
-                        <I size={14} style={active ? { color: ACCENT } : undefined} /> {d.name}
+                        <I
+                          size={14}
+                          style={active ? { color: ACCENT } : undefined}
+                        />{" "}
+                        {d.name}
                       </button>
                     );
                   })}
@@ -309,10 +369,16 @@ export default function Home() {
                           setKbOpen(false);
                         }}
                         className={`flex w-full items-center gap-2 px-3 py-2 text-[12px] transition-colors ${
-                          active ? "bg-[#1C2026] text-white" : "text-[#8A919C] hover:bg-[#1C2026] hover:text-[#E8EAED]"
+                          active
+                            ? "bg-[#1C2026] text-white"
+                            : "text-[#8A919C] hover:bg-[#1C2026] hover:text-[#E8EAED]"
                         }`}
                       >
-                        <FolderKanban size={14} style={active ? { color: ACCENT } : undefined} /> {p.name}
+                        <FolderKanban
+                          size={14}
+                          style={active ? { color: ACCENT } : undefined}
+                        />{" "}
+                        {p.name}
                       </button>
                     );
                   })}
@@ -331,12 +397,24 @@ export default function Home() {
                   {/* Avatar initials */}
                   <div
                     className="flex h-5 w-5 items-center justify-center rounded-full text-[10px] font-bold text-white"
-                    style={{ backgroundColor: userRole === "super_admin" ? ACCENT : userRole === "project_admin" ? "#5B8DEF" : "#3a414d" }}
+                    style={{
+                      backgroundColor:
+                        userRole === "super_admin"
+                          ? ACCENT
+                          : userRole === "project_admin"
+                            ? "#5B8DEF"
+                            : "#3a414d",
+                    }}
                   >
                     {userEmail[0].toUpperCase()}
                   </div>
-                  <span className="max-w-25 truncate text-[11px] text-[#C3C8D0]">{userEmail.split("@")[0]}</span>
-                  <ChevronDown size={11} className={`text-[#5f6873] transition-transform ${profileOpen ? "rotate-180" : ""}`} />
+                  <span className="max-w-25 truncate text-[11px] text-[#C3C8D0]">
+                    {userEmail.split("@")[0]}
+                  </span>
+                  <ChevronDown
+                    size={11}
+                    className={`text-[#5f6873] transition-transform ${profileOpen ? "rotate-180" : ""}`}
+                  />
                 </button>
 
                 {/* Dropdown */}
@@ -344,24 +422,40 @@ export default function Home() {
                   <div className="absolute right-0 top-full z-50 mt-1.5 w-52 rounded-xl border border-[#262B33] bg-[#15181E] shadow-xl">
                     {/* User info */}
                     <div className="px-3 py-2.5 border-b border-[#262B33]">
-                      <p className="text-[11px] text-[#E8EAED] font-medium truncate">{userEmail}</p>
+                      <p className="text-[11px] text-[#E8EAED] font-medium truncate">
+                        {userEmail}
+                      </p>
                       <p
                         className="text-[10px] font-semibold mt-0.5"
-                        style={{ color: userRole === "super_admin" ? ACCENT : userRole === "project_admin" ? "#5B8DEF" : "#5f6873" }}
+                        style={{
+                          color:
+                            userRole === "super_admin"
+                              ? ACCENT
+                              : userRole === "project_admin"
+                                ? "#5B8DEF"
+                                : "#5f6873",
+                        }}
                       >
-                        {userRole === "super_admin" ? "Super Admin" : userRole === "project_admin" ? "Project Admin" : "Employee"}
+                        {userRole === "super_admin"
+                          ? "Super Admin"
+                          : userRole === "project_admin"
+                            ? "Project Admin"
+                            : "Employee"}
                       </p>
                     </div>
 
                     {/* Admin link */}
-                    {(userRole === "super_admin" || userRole === "project_admin") && (
+                    {(userRole === "super_admin" ||
+                      userRole === "project_admin") && (
                       <Link
                         href="/admin"
                         onClick={() => setProfileOpen(false)}
                         className="flex items-center gap-2 px-3 py-2 text-[12px] text-[#8A919C] hover:bg-[#1C2026] hover:text-[#E8EAED] transition-colors"
                       >
                         <Settings size={13} />
-                        {userRole === "super_admin" ? "Manage Admins" : "Manage Employees"}
+                        {userRole === "super_admin"
+                          ? "Manage Admins"
+                          : "Manage Employees"}
                       </Link>
                     )}
 
@@ -388,13 +482,19 @@ export default function Home() {
             <div className="mt-20 flex flex-col items-center text-center">
               <div
                 className="mb-4 flex h-11 w-11 items-center justify-center rounded-xl"
-                style={{ backgroundColor: "#15181E", border: "1px solid #262B33" }}
+                style={{
+                  backgroundColor: "#15181E",
+                  border: "1px solid #262B33",
+                }}
               >
                 <Sparkles size={20} style={{ color: ASSISTANT }} />
               </div>
-              <h2 className="text-lg font-semibold">Ask anything about {dept.name}</h2>
+              <h2 className="text-lg font-semibold">
+                Ask anything about {dept.name}
+              </h2>
               <p className="mt-1 max-w-md text-sm text-[#8A919C]">
-                Answers are grounded in Horizontal&apos;s {dept.name} documents, with sources cited.
+                Answers are grounded in Horizontal&apos;s {dept.name} documents,
+                with sources cited.
               </p>
               <div className="mt-6 flex w-full max-w-md flex-col gap-2">
                 {dept.suggestions.map((s) => (
@@ -412,7 +512,11 @@ export default function Home() {
             <div className="flex flex-col gap-5">
               {messages.map((m, i) => {
                 const isUser = m.role === "user";
-                const streaming = busy && i === messages.length - 1 && !isUser && m.content.length > 0;
+                const streaming =
+                  busy &&
+                  i === messages.length - 1 &&
+                  !isUser &&
+                  m.content.length > 0;
 
                 if (isUser) {
                   return (
@@ -428,7 +532,10 @@ export default function Home() {
                   <div key={i} className="msg-in flex gap-3">
                     <div
                       className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md"
-                      style={{ backgroundColor: "#15181E", border: `1px solid ${ASSISTANT}55` }}
+                      style={{
+                        backgroundColor: "#15181E",
+                        border: `1px solid ${ASSISTANT}55`,
+                      }}
                     >
                       <Sparkles size={15} style={{ color: ASSISTANT }} />
                     </div>
@@ -437,21 +544,35 @@ export default function Home() {
                         <>
                           <span className="inline">
                             <div className={`${MD} inline`}>
-                              <ReactMarkdown remarkPlugins={[remarkGfm]}>{m.content}</ReactMarkdown>
+                              <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                                {m.content}
+                              </ReactMarkdown>
                             </div>
-                            {streaming && <span className="caret ml-0.5 inline-block">▍</span>}
+                            {streaming && (
+                              <span className="caret ml-0.5 inline-block">
+                                ▍
+                              </span>
+                            )}
                           </span>
                           {m.sources && m.sources.length > 0 && (
                             <div className="mt-3 flex flex-wrap gap-2">
                               {m.sources.map((s, j) => {
-                                const card = "flex min-w-0 max-w-full flex-col gap-0.5 rounded-md border border-[#262B33] bg-[#15181E] px-2.5 py-1.5 text-[12px]";
+                                const card =
+                                  "flex min-w-0 max-w-full flex-col gap-0.5 rounded-md border border-[#262B33] bg-[#15181E] px-2.5 py-1.5 text-[12px]";
                                 const titleRow = (
                                   <span className="flex min-w-0 items-center gap-1.5 text-[#C3C8D0]">
-                                    <FileText size={12} className="shrink-0 text-[#8A919C]" />
-                                    <span className="truncate">{s.source_file}</span>
-                                    {s.page_number != null && (
-                                      <span className="shrink-0 text-[#5f6873]">· p.{s.page_number}</span>
-                                    )}
+                                    <FileText
+                                      size={12}
+                                      className="shrink-0 text-[#8A919C]"
+                                    />
+                                    <span className="truncate">
+                                      {s.source_file}
+                                    </span>
+                                    {s.pages?.length ? (
+                                      <span className="shrink-0 text-[#5f6873]">
+                                        · {s.pages.length === 1 ? `p.${s.pages[0]}` : `pp. ${s.pages.join(", ")}`}
+                                      </span>
+                                    ) : null}
                                   </span>
                                 );
                                 return s.source_url ? (
@@ -465,12 +586,25 @@ export default function Home() {
                                   >
                                     {titleRow}
                                     <span className="flex min-w-0 items-center gap-1.5 text-[14px] text-[#5f6873] transition-colors group-hover:text-[#7fa8ff]">
-                                      <ExternalLink size={12} className="shrink-0" />
-                                      <span className="truncate">View in Confluence (click to open)</span>
+                                      <ExternalLink
+                                        size={12}
+                                        className="shrink-0"
+                                      />
+                                      <span className="truncate">
+                                        {s.source_url?.includes(
+                                          "drive.google.com",
+                                        )
+                                          ? "Open PDF in Drive (click to open)"
+                                          : "View in Confluence (click to open)"}
+                                      </span>
                                     </span>
                                   </a>
                                 ) : (
-                                  <span key={j} className={card} title={s.source_file}>
+                                  <span
+                                    key={j}
+                                    className={card}
+                                    title={s.source_file}
+                                  >
                                     {titleRow}
                                   </span>
                                 );
