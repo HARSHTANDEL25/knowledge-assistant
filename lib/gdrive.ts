@@ -18,7 +18,13 @@ function b64url(input: Buffer | string): string {
 // Mint a service-account access token via a signed JWT (RS256) — no extra deps.
 export async function getDriveToken(): Promise<string> {
   const email = process.env.GOOGLE_CLIENT_EMAIL!;
-  const key = process.env.GOOGLE_PRIVATE_KEY!.replace(/\\n/g, "\n");
+  // Tolerate the key being pasted WITH wrapping quotes (e.g. copied straight from
+  // .env.local into Vercel, which — unlike dotenv — does not strip them).
+  let key = (process.env.GOOGLE_PRIVATE_KEY ?? "").trim();
+  if ((key.startsWith('"') && key.endsWith('"')) || (key.startsWith("'") && key.endsWith("'"))) {
+    key = key.slice(1, -1);
+  }
+  key = key.replace(/\\n/g, "\n"); // literal \n -> real newlines
   const now = Math.floor(Date.now() / 1000);
   const header = b64url(JSON.stringify({ alg: "RS256", typ: "JWT" }));
   const claims = b64url(
