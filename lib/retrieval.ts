@@ -23,7 +23,10 @@ export type Source = { source_file: string; pages: number[]; source_url?: string
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type Supa = any;
 
-export async function retrieve(supabase: Supa, kbSlug: string, question: string) {
+// `searchText` lets the caller pass a contextualized query (e.g. previous
+// question + the follow-up) so vague follow-ups like "how much is it?" still
+// retrieve the right chunks. Defaults to the question itself.
+export async function retrieve(supabase: Supa, kbSlug: string, question: string, searchText?: string) {
   const { data: kb } = await supabase
     .from("knowledge_bases")
     .select("id, name")
@@ -34,7 +37,7 @@ export async function retrieve(supabase: Supa, kbSlug: string, question: string)
   // Strip filler for BOTH legs: the keyword leg is hurt by filler words that
   // become required AND-terms in websearch_to_tsquery ("info" in "get the info
   // about figma" would exclude docs that don't contain "info").
-  const core = coreQuery(question);
+  const core = coreQuery(searchText ?? question);
   const queryEmbedding = await embedOne(core);
   const { data: chunks, error } = await supabase.rpc("hybrid_search", {
     query_text: core,

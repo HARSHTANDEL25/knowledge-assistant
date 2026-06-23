@@ -25,10 +25,26 @@ function friendlyError(err: unknown): string {
 }
 
 export async function POST(req: Request) {
-  const { question, kb } = await req.json();
+  const { question, kb, history } = await req.json();
   if (!question || !kb) {
     return new Response("Missing question or kb", { status: 400 });
   }
+
+  // Build a short conversation block for follow-up context. Guarded: last 6
+  // turns, each clamped to 1500 chars, so a long chat can't blow the token
+  // budget. Roles are sanitized — never trust the client blindly.
+  const turns: { role: string; content: string }[] = Array.isArray(history) ? history : [];
+  const convo = turns
+    .filter(
+      (t) =>
+        t &&
+        (t.role === "user" || t.role === "assistant") &&
+        typeof t.content === "string" &&
+        t.content.trim(),
+    )
+    .slice(-6)
+    .map((t) => `${t.role === "user" ? "User" : "Assistant"}: ${t.content.slice(0, 1500)}`)
+    .join("\n");
 
   // User-JWT client. RLS still scopes what each user can retrieve, but the
   // endpoint itself now requires a session — it is NOT public. Previously an
@@ -42,11 +58,18 @@ export async function POST(req: Request) {
     return new Response("Unauthorized — please sign in.", { status: 401 });
   }
 
+  // Contextualize retrieval: blend the previous question with the follow-up so
+  // vague follow-ups ("how much is it?") still fetch the right chunks.
+  const lastUserTurn = [...turns]
+    .reverse()
+    .find((t) => t.role === "user" && typeof t.content === "string" && t.content.trim())?.content;
+  const searchText = lastUserTurn ? `${lastUserTurn} ${question}` : question;
+
   let kbName = kb;
   let context = "";
   let citations: Source[] = [];
   try {
-    const r = await retrieve(supabase, kb, question);
+    const r = await retrieve(supabase, kb, question, searchText);
     kbName = r.kbName;
     context = r.context;
     citations = r.citations;
@@ -61,8 +84,10 @@ export async function POST(req: Request) {
   const groq = createGroq({ apiKey: process.env.GROQ_API_KEY });
   const system = `You are an internal AI assistant for Horizontal Digital, a global digital experience agency. You are answering questions about the ${kbName} knowledge base.
 
-Always respond in a professional, helpful, and friendly tone. If the answer is found in the context, provide it clearly. If the context does not contain enough information to answer the question, say: "I don't have that information in the current documents. Please reach out to the relevant team for assistance."`;
-  const prompt = `Context:\n${context}\n\nEmployee Question: ${question}\n\nAnswer:`;
+Always respond in a professional, helpful, and friendly tone. If the answer is found in the context, provide it clearly. If the context does not contain enough information to answer the question, say: "I don't have that information in the current documents. Please reach out to the relevant team for assistance."
+
+Use the previous conversation to interpret follow-up questions (e.g. resolve pronouns or phrases like "what about India?" against the earlier topic). Always ground your answer in the Context below — the conversation is only for understanding the question, not a source of facts.`;
+  const prompt = `${convo ? `Previous conversation:\n${convo}\n\n` : ""}Context:\n${context}\n\nEmployee Question: ${question}\n\nAnswer:`;
 
   const encoder = new TextEncoder();
   const stream = new ReadableStream({

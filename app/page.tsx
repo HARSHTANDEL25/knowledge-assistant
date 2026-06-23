@@ -181,11 +181,17 @@ export default function Home() {
       ],
     }));
 
+    // send the context to the llm
+    const prior = (histories[kbAtSend] ?? [])
+    .filter(m=>m.content) // skip the empty streaming placeholder
+    .slice(-6)  // last ~3 exchanges (3 user + 3 assistant)
+    .map((m) => ({ role: m.role, content: m.content }));
+
     try {
       const res = await fetch("/api/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ question: q, kb: kbAtSend }),
+        body: JSON.stringify({ question: q, kb: kbAtSend , history: prior}),
       });
       const srcHeader = res.headers.get("x-sources");
       const sources: Source[] = srcHeader
