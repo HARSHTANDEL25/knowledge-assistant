@@ -354,7 +354,7 @@ export default function AdminPage() {
                   : "Connect your Atlassian account to sync project spaces"}
               </div>
             </div>
-            <div className="flex items-center gap-3">
+            <div className="flex items-center gap-3 flex-wrap">
               {confluenceConnected && (
                 <div className="flex items-center gap-1.5 text-xs text-green-400">
                   <CheckCircle2 size={14} /> Connected
@@ -507,7 +507,7 @@ export default function AdminPage() {
           <h2 className="mb-4 text-sm font-semibold">
             Create Project Knowledge Base
           </h2>
-          <form onSubmit={createKb} className="flex gap-3">
+          <form onSubmit={createKb} className="flex gap-3 flex-wrap">
             <input
               value={newName}
               onChange={(e) => setNewName(e.target.value)}
@@ -681,7 +681,7 @@ export default function AdminPage() {
                 )}
 
                 {/* Add user */}
-                <div className="flex gap-2">
+                <div className="flex gap-2 flex-wrap">
                   <input
                     value={assignEmail[kb.id] ?? ""}
                     onChange={(e) =>
@@ -715,7 +715,7 @@ export default function AdminPage() {
                   <div className="mb-1.5 text-[11px] font-medium text-[#5f6873]">
                     Confluence Space
                   </div>
-                  <div className="flex gap-2">
+                  <div className="flex gap-2 flex-wrap">
                     <input
                       value={spaceUrl[kb.id] ?? ""}
                       onChange={(e) =>
