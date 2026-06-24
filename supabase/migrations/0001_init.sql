@@ -114,6 +114,9 @@ as $$
 $$;
 
 -- ── New-user trigger: auth.users -> profiles ─────────────────────────────────
+-- Also enforces the company email-domain allowlist: a non-@horizontal.com signup
+-- raises here, which rolls back the auth.users insert — so it's unbypassable
+-- (the client-side check in signup is just for a friendly message).
 
 create or replace function handle_new_user()
 returns trigger
@@ -122,6 +125,10 @@ security definer
 set search_path = public, pg_temp
 as $$
 begin
+  if lower(split_part(coalesce(new.email, ''), '@', 2)) <> 'horizontal.com' then
+    raise exception 'Signups are restricted to @horizontal.com email addresses';
+  end if;
+
   insert into public.profiles (id, email)
   values (new.id, new.email)
   on conflict (id) do nothing;

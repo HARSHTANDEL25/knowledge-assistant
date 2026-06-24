@@ -18,6 +18,10 @@ export default function SignupPage() {
   async function handleSignup(e: React.FormEvent) {
     e.preventDefault();
     setError("");
+    if (!email.trim().toLowerCase().endsWith("@horizontal.com")) {
+      setError("Please sign up with your @horizontal.com email.");
+      return;
+    }
     setLoading(true);
     const supabase = createClient();
     const { error } = await supabase.auth.signUp({ email, password });
