@@ -17,6 +17,8 @@ import {
   Check,
   X,
   Cloud,
+  Upload,
+  FileText,
 } from "lucide-react";
 
 const ACCENT = "#FF4747";
@@ -61,6 +63,15 @@ export default function AdminPage() {
   const [editingKb, setEditingKb] = useState<string | null>(null);
   const [editName, setEditName] = useState<Record<string, string>>({});
   const [savingKb, setSavingKb] = useState<Record<string, boolean>>({});
+
+  const [uploadpdf,setUploadpdf] =useState<Record<string, File | null>>({});
+  const [uploadingpdf,setUploadingpdf]=useState<Record<string,boolean>>({});
+  const [uploadResultpdf, setUploadResultpdf] = useState<Record<string, string>>({});
+  // Bumped after a successful upload to force the native file input to remount —
+  // browsers keep the previously-picked file internally otherwise.
+  const [uploadInputKey, setUploadInputKey] = useState<Record<string, number>>({});
+
+
 
   // Create KB form
   const [newName, setNewName] = useState("");
@@ -217,6 +228,38 @@ export default function AdminPage() {
       setSyncResult((r) => ({ ...r, [kbId]: `Error: ${String(e)}` }));
       setSyncing((s) => ({ ...s, [kbId]: false }));
     }
+  }
+
+  async function Uploadpdf(kbId: string) {
+    const file = uploadpdf[kbId];
+    if(!file) return;
+    setUploadingpdf((s)=>({...s,[kbId]:true}));
+
+    try{
+      const formdata= new FormData();
+      formdata.append("kb_id",kbId);
+      formdata.append("file",file)
+
+      const res = await fetch("/api/admin/upload",{method:"POST",body:formdata});
+      const json = await res.json().catch(()=>({}));
+
+      if(!res.ok){
+            setUploadResultpdf((r) => ({ ...r, [kbId]: `Error: ${json.error ?? res.statusText}` }));
+      }
+      else{
+        setUploadResultpdf((r)=>({...r,[kbId]: json.message?? "uploaded"}))
+            setUploadpdf((f) => ({ ...f, [kbId]: null })); // clear the picked file on success
+            setUploadInputKey((k) => ({ ...k, [kbId]: (k[kbId] ?? 0) + 1 })); // force the native input to reset too
+
+      }
+    }
+    catch (e) {
+  setUploadResultpdf((r) => ({ ...r, [kbId]: `Error: ${String(e)}` }));
+  
+  }
+  finally {
+  setUploadingpdf((s) => ({ ...s, [kbId]: false }));
+}
   }
 
   async function syncGdrive(scope: "hr" | "it" | "all", full = false) {
@@ -744,6 +787,73 @@ export default function AdminPage() {
                     </p>
                   )}
                 </div>
+                {/* upload pdf */}
+                <div className="mt-3 border-t border-[#262B33] pt-3">
+                  <p className="mb-1.5 text-[11px] font-medium text-[#5f6873]">
+                    Upload PDF
+                  </p>
+                  <div className="flex gap-2 flex-wrap items-center">
+                    <input
+                      key={uploadInputKey[kb.id] ?? 0}
+                      id={`pdf-upload-${kb.id}`}
+                      type="file"
+                      accept="application/pdf"
+                      className="hidden"
+                      onChange={(e) => setUploadpdf((f) => ({ ...f, [kb.id]: e.target.files?.[0] ?? null }))}
+                      disabled={uploadingpdf[kb.id]}
+                    />
+                    <label
+                      htmlFor={`pdf-upload-${kb.id}`}
+                      className={`flex items-center gap-1.5 rounded-lg border border-[#262B33] bg-[#0B0D10] px-3 py-1.5 text-xs text-[#8A919C] hover:text-[#E8EAED] hover:border-[#3a414d] cursor-pointer ${
+                        uploadingpdf[kb.id] ? "pointer-events-none opacity-50" : ""
+                      }`}
+                    >
+                      <Upload size={12} /> Choose PDF
+                    </label>
+
+                    {uploadpdf[kb.id] && (
+                      <div className="flex items-center gap-1.5 rounded-lg bg-[#0B0D10] px-3 py-1.5 text-xs text-[#C3C8D0] min-w-0">
+                        <FileText size={12} className="text-[#5f6873] shrink-0" />
+                        <span className="truncate max-w-[160px]">{uploadpdf[kb.id]!.name}</span>
+                        <span className="text-[#5f6873] shrink-0">
+                          ({(uploadpdf[kb.id]!.size / 1024).toFixed(0)} KB)
+                        </span>
+                        {!uploadingpdf[kb.id] && (
+                          <button
+                            onClick={() => setUploadpdf((f) => ({ ...f, [kb.id]: null }))}
+                            title="Remove"
+                            className="text-[#5f6873] hover:text-[#FF4747] shrink-0"
+                          >
+                            <X size={12} />
+                          </button>
+                        )}
+                      </div>
+                    )}
+
+                    <button
+                      className="flex items-center gap-1 rounded-lg border border-[#262B33] bg-[#0B0D10] px-3 py-1.5 text-xs text-[#8A919C] hover:text-[#E8EAED] disabled:opacity-50"
+                      onClick={() => Uploadpdf(kb.id)}
+                      disabled={uploadingpdf[kb.id] || !uploadpdf[kb.id]}
+                    >
+                      {uploadingpdf[kb.id] ? (
+                        <>
+                          <Loader2 size={12} className="animate-spin" /> Uploading...
+                        </>
+                      ) : (
+                        "Upload"
+                      )}
+                    </button>
+                  </div>
+                  {uploadResultpdf[kb.id] && (
+                    <p
+                      className={`mt-1.5 text-[11px] ${
+                        uploadResultpdf[kb.id].startsWith("Error") ? "text-[#FF4747]" : "text-[#8A919C]"
+                      }`}
+                    >
+                      {uploadResultpdf[kb.id]}
+                    </p>
+                  )}
+                </div>
               </div>
             );
           })}
@@ -794,3 +904,4 @@ export default function AdminPage() {
     </div>
   );
 }
+
