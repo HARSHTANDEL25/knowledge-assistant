@@ -7,7 +7,6 @@ import remarkGfm from "remark-gfm";
 import Link from "next/link";
 import {
   ArrowUp,
-  Sparkles,
   FileText,
   Users,
   MonitorSmartphone,
@@ -17,8 +16,11 @@ import {
   Settings,
   ChevronDown,
   ExternalLink,
+  Sun,
+  Moon,
 } from "lucide-react";
 import { createClient } from "@/utils/supabase/client";
+import { useTheme } from "@/context/Themeprovider";
 
 type Source = {
   source_file: string;
@@ -28,8 +30,8 @@ type Source = {
 type Msg = { role: "user" | "assistant"; content: string; sources?: Source[] };
 type ProjectKb = { id: string; name: string; slug: string };
 
-const ACCENT = "#FF4747";
-const ASSISTANT = "#5B8DEF";
+const ACCENT = "#182FFF";
+const ASSISTANT = "#0F766E";
 
 const DEPARTMENTS = [
   {
@@ -57,7 +59,7 @@ const DEPARTMENTS = [
 ] as const;
 
 const MD =
-  "[&_ol]:list-decimal [&_ol]:pl-5 [&_ul]:list-disc [&_ul]:pl-5 [&_li]:my-1 [&_p]:my-2 [&_p:first-child]:mt-0 [&_p:last-child]:mb-0 [&_strong]:font-semibold [&_strong]:text-white [&_code]:rounded [&_code]:bg-[#262B33] [&_code]:px-1 [&_code]:py-0.5 [&_code]:text-[13px] [&_code]:font-mono [&_h1]:text-lg [&_h1]:font-bold [&_h2]:font-semibold [&_h2]:mt-3 [&_a]:underline [&_a]:text-[#7fa8ff] [&_table]:my-2 [&_th]:text-left [&_th]:pr-4 [&_td]:pr-4 [&_td]:py-0.5";
+  "[&_ol]:list-decimal [&_ol]:pl-5 [&_ul]:list-disc [&_ul]:pl-5 [&_li]:my-1 [&_p]:my-2 [&_p:first-child]:mt-0 [&_p:last-child]:mb-0 [&_strong]:font-semibold [&_strong]:text-[var(--ka-text)] [&_code]:rounded [&_code]:bg-[var(--ka-code-bg)] [&_code]:px-1 [&_code]:py-0.5 [&_code]:text-[13px] [&_code]:font-mono [&_h1]:text-lg [&_h1]:font-bold [&_h2]:font-semibold [&_h2]:mt-3 [&_a]:underline [&_a]:text-[var(--ka-link)] [&_table]:my-2 [&_th]:text-left [&_th]:pr-4 [&_td]:pr-4 [&_td]:py-0.5";
 
 export default function Home() {
   const router = useRouter();
@@ -76,6 +78,7 @@ export default function Home() {
   const [profileOpen, setProfileOpen] = useState(false);
   const [kbOpen, setKbOpen] = useState(false);
   const [projectsOpen, setProjectsOpen] = useState(false);
+  const { theme, toggletheme } = useTheme();
   const endRef = useRef<HTMLDivElement>(null);
   const profileRef = useRef<HTMLDivElement>(null);
   const kbRef = useRef<HTMLDivElement>(null);
@@ -227,9 +230,9 @@ export default function Home() {
   }
 
   return (
-    <div className="flex h-screen flex-col bg-[#0B0D10] text-[#E8EAED]">
+    <div className="flex h-screen flex-col bg-[var(--ka-bg)] text-[var(--ka-text)]">
       {/* Header */}
-      <header className="border-b border-[#262B33]">
+      <header className="border-b border-[var(--ka-border)]">
         <div className="mx-auto flex max-w-3xl items-center justify-between gap-2 px-3 py-3 md:px-5">
           <div className="flex min-w-0 items-center gap-2.5">
             <div
@@ -240,7 +243,7 @@ export default function Home() {
             </div>
             <div className="min-w-0 leading-tight">
               <div className="truncate text-sm font-semibold">Horizontal</div>
-              <div className="truncate text-[11px] text-[#8A919C]">
+              <div className="truncate text-[11px] text-[var(--ka-text-muted)]">
                 Knowledge Assistant
               </div>
             </div>
@@ -249,7 +252,7 @@ export default function Home() {
           <div className="flex shrink-0 items-center gap-2 md:gap-3">
             {/* KB switcher — desktop: department tabs + projects dropdown */}
             <div className="hidden md:flex items-center gap-2">
-              <div className="flex gap-1 rounded-lg border border-[#262B33] bg-[#15181E] p-1">
+              <div className="flex gap-1 rounded-lg border border-[var(--ka-border)] bg-[var(--ka-surface)] p-1">
                 {DEPARTMENTS.map((d) => {
                   const active = kb === d.key;
                   const I = d.Icon;
@@ -261,7 +264,7 @@ export default function Home() {
                       className={`flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${
                         active
                           ? "text-white"
-                          : "text-[#8A919C] hover:text-[#E8EAED]"
+                          : "text-[var(--ka-text-muted)] hover:text-[var(--ka-text)]"
                       }`}
                     >
                       <I size={15} /> {d.name}
@@ -280,7 +283,7 @@ export default function Home() {
                     className={`flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-sm font-medium transition-colors ${
                       projectDept
                         ? "border-transparent text-white"
-                        : "border-[#262B33] bg-[#15181E] text-[#8A919C] hover:text-[#E8EAED]"
+                        : "border-[var(--ka-border)] bg-[var(--ka-surface)] text-[var(--ka-text-muted)] hover:text-[var(--ka-text)]"
                     }`}
                   >
                     <FolderKanban size={15} className="shrink-0" />
@@ -294,7 +297,7 @@ export default function Home() {
                   </button>
 
                   {projectsOpen && (
-                    <div className="absolute right-0 top-full z-50 mt-1.5 max-h-[60vh] w-56 overflow-y-auto rounded-xl border border-[#262B33] bg-[#15181E] py-1 shadow-xl">
+                    <div className="absolute right-0 top-full z-50 mt-1.5 max-h-[60vh] w-56 overflow-y-auto rounded-xl border border-[var(--ka-border)] bg-[var(--ka-surface)] py-1 shadow-xl">
                       {projectKbs.map((p) => {
                         const active = kb === p.slug;
                         return (
@@ -306,8 +309,8 @@ export default function Home() {
                             }}
                             className={`flex w-full items-center gap-2 px-3 py-2 text-[12px] transition-colors ${
                               active
-                                ? "bg-[#1C2026] text-white"
-                                : "text-[#8A919C] hover:bg-[#1C2026] hover:text-[#E8EAED]"
+                                ? "bg-[var(--ka-user-bubble)] text-[var(--ka-text)]"
+                                : "text-[var(--ka-text-muted)] hover:bg-[var(--ka-user-bubble)] hover:text-[var(--ka-text)]"
                             }`}
                           >
                             <FolderKanban
@@ -329,18 +332,18 @@ export default function Home() {
             <div className="relative md:hidden" ref={kbRef}>
               <button
                 onClick={() => setKbOpen((o) => !o)}
-                className="flex items-center gap-1.5 rounded-lg border border-[#262B33] bg-[#15181E] px-3 py-1.5 text-sm font-medium text-[#E8EAED] transition-colors hover:border-[#3a414d]"
+                className="flex items-center gap-1.5 rounded-lg border border-[var(--ka-border)] bg-[var(--ka-surface)] px-3 py-1.5 text-sm font-medium text-[var(--ka-text)] transition-colors hover:border-[var(--ka-border-hover)]"
               >
                 <ActiveKbIcon size={15} style={{ color: ACCENT }} />
                 <span className="max-w-32 truncate">{dept.name}</span>
                 <ChevronDown
                   size={13}
-                  className={`text-[#5f6873] transition-transform ${kbOpen ? "rotate-180" : ""}`}
+                  className={`text-[var(--ka-text-faint)] transition-transform ${kbOpen ? "rotate-180" : ""}`}
                 />
               </button>
 
               {kbOpen && (
-                <div className="absolute left-0 top-full z-50 mt-1.5 max-h-[60vh] w-52 overflow-y-auto rounded-xl border border-[#262B33] bg-[#15181E] py-1 shadow-xl">
+                <div className="absolute left-0 top-full z-50 mt-1.5 max-h-[60vh] w-52 overflow-y-auto rounded-xl border border-[var(--ka-border)] bg-[var(--ka-surface)] py-1 shadow-xl">
                   {DEPARTMENTS.map((d) => {
                     const active = kb === d.key;
                     const I = d.Icon;
@@ -353,8 +356,8 @@ export default function Home() {
                         }}
                         className={`flex w-full items-center gap-2 px-3 py-2 text-[12px] transition-colors ${
                           active
-                            ? "bg-[#1C2026] text-white"
-                            : "text-[#8A919C] hover:bg-[#1C2026] hover:text-[#E8EAED]"
+                            ? "bg-[var(--ka-user-bubble)] text-[var(--ka-text)]"
+                            : "text-[var(--ka-text-muted)] hover:bg-[var(--ka-user-bubble)] hover:text-[var(--ka-text)]"
                         }`}
                       >
                         <I
@@ -376,8 +379,8 @@ export default function Home() {
                         }}
                         className={`flex w-full items-center gap-2 px-3 py-2 text-[12px] transition-colors ${
                           active
-                            ? "bg-[#1C2026] text-white"
-                            : "text-[#8A919C] hover:bg-[#1C2026] hover:text-[#E8EAED]"
+                            ? "bg-[var(--ka-user-bubble)] text-[var(--ka-text)]"
+                            : "text-[var(--ka-text-muted)] hover:bg-[var(--ka-user-bubble)] hover:text-[var(--ka-text)]"
                         }`}
                       >
                         <FolderKanban
@@ -392,13 +395,22 @@ export default function Home() {
               )}
             </div>
 
+            {/* Theme toggle */}
+            <button
+              onClick={toggletheme}
+              aria-label="Toggle theme"
+              className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-[var(--ka-border)] bg-[var(--ka-surface)] text-[var(--ka-text-muted)] transition-colors hover:border-[var(--ka-border-hover)] hover:text-[var(--ka-text)]"
+            >
+              {theme === "light" ? <Moon size={15} /> : <Sun size={15} />}
+            </button>
+
             {/* User + admin + logout */}
             {userEmail && (
               <div className="relative shrink-0" ref={profileRef}>
                 {/* Profile pill button */}
                 <button
                   onClick={() => setProfileOpen((o) => !o)}
-                  className="flex items-center gap-2 rounded-lg border border-[#262B33] bg-[#15181E] px-2.5 py-1.5 transition-colors hover:border-[#3a414d]"
+                  className="flex items-center gap-2 rounded-lg border border-[var(--ka-border)] bg-[var(--ka-surface)] px-2.5 py-1.5 transition-colors hover:border-[var(--ka-border-hover)]"
                 >
                   {/* Avatar initials */}
                   <div
@@ -408,38 +420,38 @@ export default function Home() {
                         userRole === "super_admin"
                           ? ACCENT
                           : userRole === "project_admin"
-                            ? "#5B8DEF"
-                            : "#3a414d",
+                            ? "#0F766E"
+                            : "var(--ka-border-hover)",
                     }}
                   >
                     {userEmail[0].toUpperCase()}
                   </div>
-                  <span className="max-w-25 truncate text-[11px] text-[#C3C8D0]">
+                  <span className="max-w-25 truncate text-[11px] text-[var(--ka-text-secondary)]">
                     {userEmail.split("@")[0]}
                   </span>
                   <ChevronDown
                     size={11}
-                    className={`text-[#5f6873] transition-transform ${profileOpen ? "rotate-180" : ""}`}
+                    className={`text-[var(--ka-text-faint)] transition-transform ${profileOpen ? "rotate-180" : ""}`}
                   />
                 </button>
 
                 {/* Dropdown */}
                 {profileOpen && (
-                  <div className="absolute right-0 top-full z-50 mt-1.5 w-52 rounded-xl border border-[#262B33] bg-[#15181E] shadow-xl">
+                  <div className="absolute right-0 top-full z-50 mt-1.5 w-52 rounded-xl border border-[var(--ka-border)] bg-[var(--ka-surface)] shadow-xl">
                     {/* User info */}
-                    <div className="px-3 py-2.5 border-b border-[#262B33]">
-                      <p className="text-[11px] text-[#E8EAED] font-medium truncate">
+                    <div className="px-3 py-2.5 border-b border-[var(--ka-border)]">
+                      <p className="text-[11px] text-[var(--ka-text)] font-medium truncate">
                         {userEmail}
                       </p>
                       <p
-                        className="text-[10px] font-semibold mt-0.5"
+                        className="text-[10px] font-semibold mt-0.5 "
                         style={{
                           color:
                             userRole === "super_admin"
                               ? ACCENT
                               : userRole === "project_admin"
-                                ? "#5B8DEF"
-                                : "#5f6873",
+                                ? "#0F766E "
+                                : "var(--ka-text-faint)",
                         }}
                       >
                         {userRole === "super_admin"
@@ -456,7 +468,7 @@ export default function Home() {
                       <Link
                         href="/admin"
                         onClick={() => setProfileOpen(false)}
-                        className="flex items-center gap-2 px-3 py-2 text-[12px] text-[#8A919C] hover:bg-[#1C2026] hover:text-[#E8EAED] transition-colors"
+                        className="flex items-center gap-2 px-3 py-2 text-[12px] text-[var(--ka-text-muted)] hover:bg-[var(--ka-user-bubble)] hover:text-[var(--ka-text)] transition-colors"
                       >
                         <Settings size={13} />
                         {userRole === "super_admin"
@@ -468,7 +480,7 @@ export default function Home() {
                     {/* Sign out */}
                     <button
                       onClick={handleLogout}
-                      className="flex w-full items-center gap-2 px-3 py-2 text-[12px] text-[#8A919C] hover:bg-[#1C2026] hover:text-[#FF4747] transition-colors rounded-b-xl"
+                      className="flex w-full items-center gap-2 px-3 py-2 text-[12px] text-[var(--ka-text-muted)] hover:bg-[var(--ka-user-bubble)] hover:text-[#B42318] transition-colors rounded-b-xl"
                     >
                       <LogOut size={13} />
                       Sign out
@@ -487,18 +499,18 @@ export default function Home() {
           {messages.length === 0 ? (
             <div className="mt-20 flex flex-col items-center text-center">
               <div
-                className="mb-4 flex h-11 w-11 items-center justify-center rounded-xl"
+                className="mb-4 flex h-11 w-11 items-center justify-center rounded-lg"
                 style={{
-                  backgroundColor: "#15181E",
-                  border: "1px solid #262B33",
+                  backgroundColor: "var(--ka-surface)",
+                  border: "1px solid var(--ka-border)",
                 }}
               >
-                <Sparkles size={20} style={{ color: ASSISTANT }} />
+                <FileText size={19} style={{ color: ASSISTANT }} />
               </div>
-              <h2 className="text-lg font-semibold">
-                Ask anything about {dept.name}
+              <h2 className="text-lg font-semibold text-[var(--ka-text)]">
+                {dept.name} Knowledge Base
               </h2>
-              <p className="mt-1 max-w-md text-sm text-[#8A919C]">
+              <p className="mt-1 max-w-md text-sm text-[var(--ka-text-muted)]">
                 Answers are grounded in Horizontal&apos;s {dept.name} documents,
                 with sources cited.
               </p>
@@ -507,7 +519,7 @@ export default function Home() {
                   <button
                     key={s}
                     onClick={() => send(s)}
-                    className="rounded-lg border border-[#262B33] bg-[#15181E] px-4 py-2.5 text-left text-sm text-[#C3C8D0] transition-colors hover:border-[#3a414d] hover:bg-[#1C2026]"
+                    className="rounded-lg border border-[var(--ka-border)] bg-[var(--ka-surface)] px-4 py-2.5 text-left text-sm text-[var(--ka-text-secondary)] transition-colors hover:border-[var(--ka-border-hover)] hover:bg-[var(--ka-user-bubble)]"
                   >
                     {s}
                   </button>
@@ -527,7 +539,7 @@ export default function Home() {
                 if (isUser) {
                   return (
                     <div key={i} className="msg-in flex justify-end">
-                      <div className="max-w-[80%] rounded-2xl bg-[#1C2026] px-4 py-2.5 text-[15px] leading-relaxed">
+                      <div className="max-w-[80%] rounded-lg bg-[var(--ka-user-bubble)] px-4 py-2.5 text-[15px] leading-relaxed text-[var(--ka-text)]">
                         {m.content}
                       </div>
                     </div>
@@ -537,13 +549,14 @@ export default function Home() {
                 return (
                   <div key={i} className="msg-in flex gap-3">
                     <div
-                      className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md"
+                      className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-[11px] font-bold"
                       style={{
-                        backgroundColor: "#15181E",
+                        backgroundColor: "var(--ka-surface)",
                         border: `1px solid ${ASSISTANT}55`,
+                        color: ASSISTANT,
                       }}
                     >
-                      <Sparkles size={15} style={{ color: ASSISTANT }} />
+                      H
                     </div>
                     <div className="min-w-0 flex-1 text-[15px] leading-[1.65]">
                       {m.content ? (
@@ -564,18 +577,18 @@ export default function Home() {
                             <div className="mt-3 flex flex-wrap gap-2">
                               {m.sources.map((s, j) => {
                                 const card =
-                                  "flex min-w-0 max-w-full flex-col gap-0.5 rounded-md border border-[#262B33] bg-[#15181E] px-2.5 py-1.5 text-[12px]";
+                                  "flex min-w-0 max-w-full flex-col gap-0.5 rounded-md border border-[var(--ka-border)] bg-[var(--ka-surface)] px-2.5 py-1.5 text-[12px]";
                                 const titleRow = (
-                                  <span className="flex min-w-0 items-center gap-1.5 text-[#C3C8D0]">
+                                  <span className="flex min-w-0 items-center gap-1.5 text-[var(--ka-text-secondary)]">
                                     <FileText
                                       size={12}
-                                      className="shrink-0 text-[#8A919C]"
+                                      className="shrink-0 text-[var(--ka-text-muted)]"
                                     />
                                     <span className="truncate">
                                       {s.source_file}
                                     </span>
                                     {s.pages?.length ? (
-                                      <span className="shrink-0 text-[#5f6873]">
+                                      <span className="shrink-0 text-[var(--ka-text-faint)]">
                                         · {s.pages.length === 1 ? `p.${s.pages[0]}` : `pp. ${s.pages.join(", ")}`}
                                       </span>
                                     ) : null}
@@ -588,10 +601,10 @@ export default function Home() {
                                     target="_blank"
                                     rel="noopener noreferrer"
                                     title={s.source_file}
-                                    className={`${card} group transition-colors hover:border-[#3a414d]`}
+                                    className={`${card} group transition-colors hover:border-[var(--ka-border-hover)]`}
                                   >
                                     {titleRow}
-                                    <span className="flex min-w-0 items-center gap-1.5 text-[14px] text-[#5f6873] transition-colors group-hover:text-[#7fa8ff]">
+                                    <span className="flex min-w-0 items-center gap-1.5 text-[14px] text-[var(--ka-text-faint)] transition-colors group-hover:text-[var(--ka-link)]">
                                       <ExternalLink
                                         size={12}
                                         className="shrink-0"
@@ -619,7 +632,7 @@ export default function Home() {
                           )}
                         </>
                       ) : (
-                        <span className="text-[#8A919C]">
+                        <span className="text-[var(--ka-text-muted)]">
                           Thinking<span className="caret">…</span>
                         </span>
                       )}
@@ -634,7 +647,7 @@ export default function Home() {
       </main>
 
       {/* Input */}
-      <div className="border-t border-[#262B33] bg-[#0B0D10]">
+      <div className="border-t border-[var(--ka-border)] bg-[var(--ka-bg)]">
         <div className="mx-auto max-w-3xl px-5 py-4">
           <div className="relative">
             <textarea
@@ -648,7 +661,7 @@ export default function Home() {
               }}
               rows={1}
               placeholder={dept.placeholder}
-              className="w-full resize-none rounded-xl border border-[#262B33] bg-[#15181E] py-3 pl-4 pr-12 text-sm outline-none placeholder:text-[#5f6873] focus:border-[#3a414d]"
+              className="w-full resize-none rounded-xl border border-[var(--ka-border)] bg-[var(--ka-surface)] py-3 pl-4 pr-12 text-sm outline-none placeholder:text-[var(--ka-text-faint)] focus:border-[var(--ka-border-hover)]"
             />
             <button
               onClick={() => send()}
@@ -660,7 +673,7 @@ export default function Home() {
               <ArrowUp size={16} />
             </button>
           </div>
-          <p className="mt-2 text-center text-[11px] text-[#5f6873]">
+          <p className="mt-2 text-center text-[11px] text-[var(--ka-text-faint)]">
             Grounded in Horizontal documents · sources cited
           </p>
         </div>

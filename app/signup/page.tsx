@@ -6,7 +6,7 @@ import Link from "next/link";
 import { Building2, ArrowRight, Loader2 } from "lucide-react";
 import { createClient } from "@/utils/supabase/client";
 
-const ACCENT = "#FF4747";
+const ACCENT = "#182FFF";
 
 export default function SignupPage() {
   const router = useRouter();

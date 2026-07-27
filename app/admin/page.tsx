@@ -19,9 +19,12 @@ import {
   Cloud,
   Upload,
   FileText,
+  Moon,
+  Sun,
 } from "lucide-react";
+import { useTheme } from "@/context/Themeprovider";
 
-const ACCENT = "#FF4747";
+const ACCENT = "#182FFF";
 
 type Kb = { id: string; name: string; slug: string };
 type AccessRow = {
@@ -37,6 +40,7 @@ type DriveFolder = {
   synced: number;
   unsynced: string[];
   failed: string[];
+  duplicate: string[];
   stale: string[];
   url: string;
 };
@@ -64,14 +68,14 @@ export default function AdminPage() {
   const [editName, setEditName] = useState<Record<string, string>>({});
   const [savingKb, setSavingKb] = useState<Record<string, boolean>>({});
 
-  const [uploadpdf,setUploadpdf] =useState<Record<string, File | null>>({});
-  const [uploadingpdf,setUploadingpdf]=useState<Record<string,boolean>>({});
+  const [uploadpdf, setUploadpdf] = useState<Record<string, File | null>>({});
+  const [uploadingpdf, setUploadingpdf] = useState<Record<string, boolean>>({});
   const [uploadResultpdf, setUploadResultpdf] = useState<Record<string, string>>({});
   // Bumped after a successful upload to force the native file input to remount —
   // browsers keep the previously-picked file internally otherwise.
   const [uploadInputKey, setUploadInputKey] = useState<Record<string, number>>({});
 
-
+  const { theme, toggletheme } = useTheme();
 
   // Create KB form
   const [newName, setNewName] = useState("");
@@ -232,34 +236,34 @@ export default function AdminPage() {
 
   async function Uploadpdf(kbId: string) {
     const file = uploadpdf[kbId];
-    if(!file) return;
-    setUploadingpdf((s)=>({...s,[kbId]:true}));
+    if (!file) return;
+    setUploadingpdf((s) => ({ ...s, [kbId]: true }));
 
-    try{
-      const formdata= new FormData();
-      formdata.append("kb_id",kbId);
-      formdata.append("file",file)
+    try {
+      const formdata = new FormData();
+      formdata.append("kb_id", kbId);
+      formdata.append("file", file)
 
-      const res = await fetch("/api/admin/upload",{method:"POST",body:formdata});
-      const json = await res.json().catch(()=>({}));
+      const res = await fetch("/api/admin/upload", { method: "POST", body: formdata });
+      const json = await res.json().catch(() => ({}));
 
-      if(!res.ok){
-            setUploadResultpdf((r) => ({ ...r, [kbId]: `Error: ${json.error ?? res.statusText}` }));
+      if (!res.ok) {
+        setUploadResultpdf((r) => ({ ...r, [kbId]: `Error: ${json.error ?? res.statusText}` }));
       }
-      else{
-        setUploadResultpdf((r)=>({...r,[kbId]: json.message?? "uploaded"}))
-            setUploadpdf((f) => ({ ...f, [kbId]: null })); // clear the picked file on success
-            setUploadInputKey((k) => ({ ...k, [kbId]: (k[kbId] ?? 0) + 1 })); // force the native input to reset too
+      else {
+        setUploadResultpdf((r) => ({ ...r, [kbId]: json.message ?? "uploaded" }))
+        setUploadpdf((f) => ({ ...f, [kbId]: null })); // clear the picked file on success
+        setUploadInputKey((k) => ({ ...k, [kbId]: (k[kbId] ?? 0) + 1 })); // force the native input to reset too
 
       }
     }
     catch (e) {
-  setUploadResultpdf((r) => ({ ...r, [kbId]: `Error: ${String(e)}` }));
-  
-  }
-  finally {
-  setUploadingpdf((s) => ({ ...s, [kbId]: false }));
-}
+      setUploadResultpdf((r) => ({ ...r, [kbId]: `Error: ${String(e)}` }));
+
+    }
+    finally {
+      setUploadingpdf((s) => ({ ...s, [kbId]: false }));
+    }
   }
 
   async function syncGdrive(scope: "hr" | "it" | "all", full = false) {
@@ -340,29 +344,31 @@ export default function AdminPage() {
 
   if (loading) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-[#0B0D10]">
-        <Loader2 size={20} className="animate-spin text-[#5f6873]" />
+      <div className="flex min-h-screen items-center justify-center bg-[var(--ka-bg)]">
+        <Loader2 size={20} className="animate-spin text-[var(--ka-text-faint)]" />
       </div>
     );
   }
 
   if (forbidden) {
     return (
-      <div className="flex min-h-screen flex-col items-center justify-center gap-3 bg-[#0B0D10] text-[#E8EAED]">
-        <p className="text-sm text-[#8A919C]">
+      <div className="flex min-h-screen flex-col items-center justify-center gap-3 bg-[var(--ka-bg)] text-[var(--ka-text)]">
+        <p className="text-sm text-[var(--ka-text-muted)]">
           You don&apos;t have admin access.
         </p>
-        <Link href="/" className="text-xs text-[#5f6873] underline">
+        <Link href="/" className="text-xs text-[var(--ka-text-faint)] underline">
           Back to chat
         </Link>
       </div>
     );
   }
 
+
+
   return (
-    <div className="min-h-screen bg-[#0B0D10] text-[#E8EAED]">
+    <div className="min-h-screen bg-[var(--ka-bg)] text-[var(--ka-text)]">
       {/* Header */}
-      <header className="border-b border-[#262B33]">
+      <header className="border-b border-[var(--ka-border)]">
         <div className="mx-auto flex max-w-3xl items-center justify-between px-5 py-3">
           <div className="flex items-center gap-2.5">
             <div
@@ -373,25 +379,35 @@ export default function AdminPage() {
             </div>
             <div className="leading-tight">
               <div className="text-sm font-semibold">Horizontal</div>
-              <div className="text-[11px] text-[#8A919C]">Admin Panel</div>
+              <div className="text-[11px] text-[var(--ka-text-muted)]">Admin Panel</div>
             </div>
           </div>
+          <div className="flex gap-4">
+          <button
+            onClick={toggletheme}
+            aria-label="Toggle theme"
+            className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-[var(--ka-border)] bg-[var(--ka-surface)] text-[var(--ka-text-muted)] transition-colors hover:border-[var(--ka-border-hover)] hover:text-[var(--ka-text)]"
+          >
+            {theme === "light" ? <Moon size={15} /> : <Sun size={15} />}
+          </button>
           <Link
             href="/"
-            className="flex items-center gap-1.5 text-xs text-[#8A919C] hover:text-[#E8EAED]"
+            className="flex items-center gap-1.5 text-xs text-[var(--ka-text-muted)] hover:text-[var(--ka-text)]"
           >
             <ArrowLeft size={13} /> Back to chat
           </Link>
+
+          </div>
         </div>
       </header>
 
       <main className="mx-auto max-w-3xl px-5 py-8 flex flex-col gap-8">
         {/* Confluence connection */}
-        <section className="rounded-xl border border-[#262B33] bg-[#15181E] p-4">
+        <section className="rounded-xl border border-[var(--ka-border)] bg-[var(--ka-surface)] p-4">
           <div className="flex items-center justify-between">
             <div>
               <div className="text-sm font-medium">Confluence</div>
-              <div className="text-[11px] text-[#5f6873] mt-0.5">
+              <div className="text-[11px] text-[var(--ka-text-faint)] mt-0.5">
                 {confluenceConnected
                   ? "Connected — you can sync any space you have access to"
                   : "Connect your Atlassian account to sync project spaces"}
@@ -408,11 +424,10 @@ export default function AdminPage() {
                 style={{
                   backgroundColor: confluenceConnected ? undefined : ACCENT,
                 }}
-                className={`flex items-center gap-1.5 rounded-lg px-4 py-2 text-sm font-medium ${
-                  confluenceConnected
-                    ? "border border-[#262B33] text-[#8A919C] hover:text-[#E8EAED]"
-                    : "text-white"
-                }`}
+                className={`flex items-center gap-1.5 rounded-lg px-4 py-2 text-sm font-medium ${confluenceConnected
+                  ? "border border-[var(--ka-border)] text-[var(--ka-text-muted)] hover:text-[var(--ka-text)]"
+                  : "text-white"
+                  }`}
               >
                 <Link2 size={14} />{" "}
                 {confluenceConnected ? "Reconnect" : "Connect Confluence"}
@@ -423,14 +438,14 @@ export default function AdminPage() {
 
         {/* Google Drive sync — HR + IT (super_admin only) */}
         {isSuperAdmin && (
-          <section className="rounded-xl border border-[#262B33] bg-[#15181E] p-4">
+          <section className="rounded-xl border border-[var(--ka-border)] bg-[var(--ka-surface)] p-4">
             <div className="flex flex-col gap-3">
               <div className="min-w-0">
                 <div className="flex items-center gap-1.5 text-sm font-medium">
-                  <Cloud size={14} className="text-[#5f6873]" /> Google Drive
+                  <Cloud size={14} className="text-[var(--ka-text-faint)]" /> Google Drive
                   (HR &amp; IT)
                 </div>
-                <div className="mt-0.5 text-[11px] text-[#5f6873]">
+                <div className="mt-0.5 text-[11px] text-[var(--ka-text-faint)]">
                   Per-folder sync only ingests PDFs that aren&apos;t synced yet. Full re-sync re-ingests every PDF (use after edits).
                 </div>
               </div>
@@ -443,7 +458,7 @@ export default function AdminPage() {
                       key={slug}
                       onClick={() => syncGdrive(slug)}
                       disabled={driveBusy !== null}
-                      className="flex items-center gap-1.5 rounded-lg border border-[#262B33] px-3 py-1.5 text-sm font-medium text-[#C3C8D0] hover:border-[#3a414d] disabled:opacity-50"
+                      className="flex items-center gap-1.5 rounded-lg border border-[var(--ka-border)] px-3 py-1.5 text-sm font-medium text-[var(--ka-text-secondary)] hover:border-[var(--ka-border-hover)] disabled:opacity-50"
                     >
                       {driveBusy === slug ? (
                         <Loader2 size={14} className="animate-spin" />
@@ -452,7 +467,7 @@ export default function AdminPage() {
                       )}
                       Sync {slug.toUpperCase()}
                       {newCount > 0 && (
-                        <span className="rounded bg-[#3a2a12] px-1 text-[10px] text-[#f0b429]">{newCount} new</span>
+                        <span className="rounded bg-[var(--ka-warn-bg)] px-1 text-[10px] text-[var(--ka-warn-text)]">{newCount} new</span>
                       )}
                     </button>
                   );
@@ -460,7 +475,7 @@ export default function AdminPage() {
                 <button
                   onClick={() => syncGdrive("all", true)}
                   disabled={driveBusy !== null}
-                  className="flex items-center gap-1.5 rounded-lg border border-[#262B33] px-3 py-1.5 text-sm font-medium text-[#8A919C] hover:border-[#3a414d] hover:text-[#E8EAED] disabled:opacity-50"
+                  className="flex items-center gap-1.5 rounded-lg border border-[var(--ka-border)] px-3 py-1.5 text-sm font-medium text-[var(--ka-text-muted)] hover:border-[var(--ka-border-hover)] hover:text-[var(--ka-text)] disabled:opacity-50"
                 >
                   {driveBusy === "full" ? (
                     <Loader2 size={14} className="animate-spin" />
@@ -473,22 +488,22 @@ export default function AdminPage() {
             </div>
 
             {driveStatus?.configured === false && (
-              <p className="mt-2 text-[11px] text-[#FF4747]">
+              <p className="mt-2 text-[11px] text-[var(--ka-danger-text)]">
                 Not configured — set GOOGLE_CLIENT_EMAIL, GOOGLE_PRIVATE_KEY,
                 DRIVE_HR_FOLDER_ID, DRIVE_IT_FOLDER_ID.
               </p>
             )}
             {driveStatus?.error && (
-              <p className="mt-2 text-[11px] text-[#FF4747]">
+              <p className="mt-2 text-[11px] text-[var(--ka-danger-text)]">
                 Drive error: {driveStatus.error}
               </p>
             )}
             {driveStatus?.folders && (
-              <div className="mt-3 flex flex-col gap-2 border-t border-[#262B33] pt-3">
+              <div className="mt-3 flex flex-col gap-2 border-t border-[var(--ka-border)] pt-3">
                 {driveStatus.folders.map((f) => (
                   <div key={f.name} className="text-[11px]">
                     <div className="flex flex-wrap items-center gap-2">
-                      <span className="font-medium text-[#C3C8D0]">
+                      <span className="font-medium text-[var(--ka-text-secondary)]">
                         {f.name}
                       </span>
                       :
@@ -496,41 +511,41 @@ export default function AdminPage() {
                         href={f.url}
                         target="_blank"
                         rel="noopener noreferrer"
-                        className="text-[#5f6873] hover:text-[#E8EAED] underline text-[11px] flex items-center gap-1"
+                        className="text-[var(--ka-text-faint)] hover:text-[var(--ka-text)] underline text-[11px] flex items-center gap-1"
                       >
                         Open folder
                       </a>
-                      <span className="text-[#5f6873]">
+                      <span className="text-[var(--ka-text-faint)]">
                         {f.synced}/{f.driveCount} synced
                       </span>
                       {f.unsynced.length > 0 && (
-                        <span className="rounded bg-[#3a2a12] px-1.5 py-0.5 text-[10px] font-medium text-[#f0b429]">
+                        <span className="rounded bg-[var(--ka-warn-bg)] px-1.5 py-0.5 text-[10px] font-medium text-[var(--ka-warn-text)]">
                           {f.unsynced.length} new — not synced yet
                         </span>
                       )}
                       {f.failed?.length > 0 && (
-                        <span className="rounded bg-[#2a1212] px-1.5 py-0.5 text-[10px] font-medium text-[#FF4747]">
+                        <span className="rounded bg-[var(--ka-danger-bg)] px-1.5 py-0.5 text-[10px] font-medium text-[var(--ka-danger-text)]">
                           {f.failed.length} failed (no text)
                         </span>
                       )}
                       {f.stale.length > 0 && (
-                        <span className="rounded bg-[#2a1212] px-1.5 py-0.5 text-[10px] font-medium text-[#FF4747]">
+                        <span className="rounded bg-[var(--ka-danger-bg)] px-1.5 py-0.5 text-[10px] font-medium text-[var(--ka-danger-text)]">
                           {f.stale.length} extra (not in Drive)
                         </span>
                       )}
                     </div>
                     {f.unsynced.length > 0 && (
-                      <div className="mt-0.5 text-[#5f6873]">
+                      <div className="mt-0.5 text-[var(--ka-text-faint)]">
                         New: {f.unsynced.join(", ")}
                       </div>
                     )}
                     {f.failed?.length > 0 && (
-                      <div className="mt-0.5 text-[#5f6873]">
+                      <div className="mt-0.5 text-[var(--ka-text-faint)]">
                         Failed — no extractable text (image/scanned PDF, OCR coming later): {f.failed.join(", ")}
                       </div>
                     )}
                     {f.stale.length > 0 && (
-                      <div className="mt-0.5 text-[#5f6873]">
+                      <div className="mt-0.5 text-[var(--ka-text-faint)]">
                         In Supabase but not in Drive: {f.stale.join(", ")}
                       </div>
                     )}
@@ -540,7 +555,7 @@ export default function AdminPage() {
             )}
 
             {driveResult && (
-              <p className="mt-2 text-[11px] text-[#8A919C]">{driveResult}</p>
+              <p className="mt-2 text-[11px] text-[var(--ka-text-muted)]">{driveResult}</p>
             )}
           </section>
         )}
@@ -556,7 +571,7 @@ export default function AdminPage() {
               onChange={(e) => setNewName(e.target.value)}
               required
               placeholder="Project name (e.g. Acme Client)"
-              className="flex-1 rounded-lg border border-[#262B33] bg-[#15181E] px-3 py-2 text-sm text-[#E8EAED] outline-none placeholder:text-[#5f6873] focus:border-[#3a414d]"
+              className="flex-1 rounded-lg border border-[var(--ka-border)] bg-[var(--ka-surface)] px-3 py-2 text-sm text-[var(--ka-text)] outline-none placeholder:text-[var(--ka-text-faint)] focus:border-[var(--ka-border-hover)]"
             />
             <input
               value={newSlug}
@@ -565,7 +580,7 @@ export default function AdminPage() {
               }
               required
               placeholder="slug (e.g. acme)"
-              className="w-36 rounded-lg border border-[#262B33] bg-[#15181E] px-3 py-2 text-sm text-[#E8EAED] outline-none placeholder:text-[#5f6873] focus:border-[#3a414d]"
+              className="w-36 rounded-lg border border-[var(--ka-border)] bg-[var(--ka-surface)] px-3 py-2 text-sm text-[var(--ka-text)] outline-none placeholder:text-[var(--ka-text-faint)] focus:border-[var(--ka-border-hover)]"
             />
             <button
               type="submit"
@@ -583,7 +598,7 @@ export default function AdminPage() {
             </button>
           </form>
           {createError && (
-            <p className="mt-2 text-xs text-[#FF4747]">{createError}</p>
+            <p className="mt-2 text-xs text-[var(--ka-danger-text)]">{createError}</p>
           )}
         </section>
 
@@ -591,7 +606,7 @@ export default function AdminPage() {
         <section className="flex flex-col gap-4">
           <h2 className="text-sm font-semibold">Project Knowledge Bases</h2>
           {kbs.length === 0 && (
-            <p className="text-sm text-[#5f6873]">
+            <p className="text-sm text-[var(--ka-text-faint)]">
               No project KBs yet. Create one above.
             </p>
           )}
@@ -600,7 +615,7 @@ export default function AdminPage() {
             return (
               <div
                 key={kb.id}
-                className="rounded-xl border border-[#262B33] bg-[#15181E] p-4"
+                className="rounded-xl border border-[var(--ka-border)] bg-[var(--ka-surface)] p-4"
               >
                 <div className="mb-3 flex items-center justify-between">
                   <div className="flex-1 min-w-0 mr-3">
@@ -619,13 +634,13 @@ export default function AdminPage() {
                             if (e.key === "Enter") updateKb(kb.id);
                             if (e.key === "Escape") setEditingKb(null);
                           }}
-                          className="flex-1 rounded-md border border-[#3a414d] bg-[#0B0D10] px-2 py-1 text-sm text-[#E8EAED] outline-none focus:border-[#5f6873]"
+                          className="flex-1 rounded-md border border-[var(--ka-border-hover)] bg-[var(--ka-bg)] px-2 py-1 text-sm text-[var(--ka-text)] outline-none focus:border-[var(--ka-text-faint)]"
                         />
                         <button
                           onClick={() => updateKb(kb.id)}
                           disabled={savingKb[kb.id]}
                           title="Save"
-                          className="flex items-center justify-center rounded-md p-1 text-green-400 hover:bg-[#1e2730] disabled:opacity-50"
+                          className="flex items-center justify-center rounded-md p-1 text-green-400 hover:bg-[var(--ka-user-bubble)] disabled:opacity-50"
                         >
                           {savingKb[kb.id] ? (
                             <Loader2 size={14} className="animate-spin" />
@@ -636,7 +651,7 @@ export default function AdminPage() {
                         <button
                           onClick={() => setEditingKb(null)}
                           title="Cancel"
-                          className="flex items-center justify-center rounded-md p-1 text-[#5f6873] hover:bg-[#1e2730] hover:text-[#E8EAED]"
+                          className="flex items-center justify-center rounded-md p-1 text-[var(--ka-text-faint)] hover:bg-[var(--ka-user-bubble)] hover:text-[var(--ka-text)]"
                         >
                           <X size={14} />
                         </button>
@@ -650,28 +665,28 @@ export default function AdminPage() {
                             setEditName((n) => ({ ...n, [kb.id]: kb.name }));
                           }}
                           title="Rename"
-                          className="flex items-center justify-center rounded-md p-1 text-[#5f6873] hover:bg-[#1e2730] hover:text-[#E8EAED] transition-colors"
+                          className="flex items-center justify-center rounded-md p-1 text-[var(--ka-text-faint)] hover:bg-[var(--ka-user-bubble)] hover:text-[var(--ka-text)] transition-colors"
                         >
                           <Pencil size={13} />
                         </button>
                       </div>
                     )}
-                    <div className="text-[11px] text-[#5f6873] mt-0.5">
+                    <div className="text-[11px] text-[var(--ka-text-faint)] mt-0.5">
                       slug: {kb.slug}
                     </div>
                   </div>
                   <div className="flex items-center gap-2 shrink-0">
-                    <span className="text-[11px] text-[#8A919C]">
+                    <span className="text-[11px] text-[var(--ka-text-muted)]">
                       {members.length} member{members.length !== 1 ? "s" : ""}
                     </span>
                     {deletingKb[kb.id] ? (
                       <Loader2
                         size={14}
-                        className="animate-spin text-[#5f6873]"
+                        className="animate-spin text-[var(--ka-text-faint)]"
                       />
                     ) : confirmDelete === kb.id ? (
                       <div className="flex items-center gap-1.5">
-                        <span className="text-[11px] text-[#8A919C]">
+                        <span className="text-[11px] text-[var(--ka-text-muted)]">
                           Delete?
                         </span>
                         <button
@@ -683,7 +698,7 @@ export default function AdminPage() {
                         </button>
                         <button
                           onClick={() => setConfirmDelete(null)}
-                          className="rounded border border-[#262B33] px-2 py-0.5 text-[11px] text-[#8A919C] hover:text-[#E8EAED]"
+                          className="rounded border border-[var(--ka-border)] px-2 py-0.5 text-[11px] text-[var(--ka-text-muted)] hover:text-[var(--ka-text)]"
                         >
                           No
                         </button>
@@ -691,7 +706,7 @@ export default function AdminPage() {
                     ) : (
                       <button
                         onClick={() => setConfirmDelete(kb.id)}
-                        className="text-[#5f6873] hover:text-[#FF4747] transition-colors"
+                        className="text-[var(--ka-text-faint)] hover:text-[var(--ka-danger-text)] transition-colors"
                         title="Delete KB"
                       >
                         <Trash2 size={14} />
@@ -706,14 +721,14 @@ export default function AdminPage() {
                     {members.map((m) => (
                       <div
                         key={m.user_id}
-                        className="flex items-center justify-between rounded-lg bg-[#0B0D10] px-3 py-2"
+                        className="flex items-center justify-between rounded-lg bg-[var(--ka-bg)] px-3 py-2"
                       >
-                        <span className="text-xs text-[#C3C8D0]">
+                        <span className="text-xs text-[var(--ka-text-secondary)]">
                           {m.profiles?.email ?? m.user_id}
                         </span>
                         <button
                           onClick={() => revokeUser(kb.id, m.user_id)}
-                          className="text-[#5f6873] hover:text-[#FF4747]"
+                          className="text-[var(--ka-text-faint)] hover:text-[var(--ka-danger-text)]"
                           title="Revoke access"
                         >
                           <Trash2 size={13} />
@@ -731,12 +746,12 @@ export default function AdminPage() {
                       setAssignEmail((a) => ({ ...a, [kb.id]: e.target.value }))
                     }
                     placeholder="user@horizontal.com"
-                    className="flex-1 rounded-lg border border-[#262B33] bg-[#0B0D10] px-3 py-1.5 text-xs text-[#E8EAED] outline-none placeholder:text-[#5f6873] focus:border-[#3a414d]"
+                    className="flex-1 rounded-lg border border-[var(--ka-border)] bg-[var(--ka-bg)] px-3 py-1.5 text-xs text-[var(--ka-text)] outline-none placeholder:text-[var(--ka-text-faint)] focus:border-[var(--ka-border-hover)]"
                   />
                   <button
                     onClick={() => assignUser(kb.id)}
                     disabled={assigning[kb.id]}
-                    className="flex items-center gap-1 rounded-lg border border-[#262B33] bg-[#0B0D10] px-3 py-1.5 text-xs text-[#8A919C] hover:text-[#E8EAED] disabled:opacity-50"
+                    className="flex items-center gap-1 rounded-lg border border-[var(--ka-border)] bg-[var(--ka-bg)] px-3 py-1.5 text-xs text-[var(--ka-text-muted)] hover:text-[var(--ka-text)] disabled:opacity-50"
                   >
                     {assigning[kb.id] ? (
                       <Loader2 size={12} className="animate-spin" />
@@ -748,14 +763,14 @@ export default function AdminPage() {
                   </button>
                 </div>
                 {assignError[kb.id] && (
-                  <p className="mt-1.5 text-[11px] text-[#FF4747]">
+                  <p className="mt-1.5 text-[11px] text-[var(--ka-danger-text)]">
                     {assignError[kb.id]}
                   </p>
                 )}
 
                 {/* Confluence sync */}
-                <div className="mt-3 border-t border-[#262B33] pt-3">
-                  <div className="mb-1.5 text-[11px] font-medium text-[#5f6873]">
+                <div className="mt-3 border-t border-[var(--ka-border)] pt-3">
+                  <div className="mb-1.5 text-[11px] font-medium text-[var(--ka-text-faint)]">
                     Confluence Space
                   </div>
                   <div className="flex gap-2 flex-wrap">
@@ -765,12 +780,12 @@ export default function AdminPage() {
                         setSpaceUrl((s) => ({ ...s, [kb.id]: e.target.value }))
                       }
                       placeholder="Paste space or page URL from Confluence"
-                      className="flex-1 rounded-lg border border-[#262B33] bg-[#0B0D10] px-3 py-1.5 text-xs text-[#E8EAED] outline-none placeholder:text-[#5f6873] focus:border-[#3a414d]"
+                      className="flex-1 rounded-lg border border-[var(--ka-border)] bg-[var(--ka-bg)] px-3 py-1.5 text-xs text-[var(--ka-text)] outline-none placeholder:text-[var(--ka-text-faint)] focus:border-[var(--ka-border-hover)]"
                     />
                     <button
                       onClick={() => syncConfluence(kb.id)}
                       disabled={syncing[kb.id] || !spaceUrl[kb.id]?.trim()}
-                      className="flex items-center gap-1 rounded-lg border border-[#262B33] bg-[#0B0D10] px-3 py-1.5 text-xs text-[#8A919C] hover:text-[#E8EAED] disabled:opacity-50"
+                      className="flex items-center gap-1 rounded-lg border border-[var(--ka-border)] bg-[var(--ka-bg)] px-3 py-1.5 text-xs text-[var(--ka-text-muted)] hover:text-[var(--ka-text)] disabled:opacity-50"
                     >
                       {syncing[kb.id] ? (
                         <Loader2 size={12} className="animate-spin" />
@@ -782,14 +797,14 @@ export default function AdminPage() {
                     </button>
                   </div>
                   {syncResult[kb.id] && (
-                    <p className="mt-1.5 text-[11px] text-[#8A919C]">
+                    <p className="mt-1.5 text-[11px] text-[var(--ka-text-muted)]">
                       {syncResult[kb.id]}
                     </p>
                   )}
                 </div>
                 {/* upload pdf */}
-                <div className="mt-3 border-t border-[#262B33] pt-3">
-                  <p className="mb-1.5 text-[11px] font-medium text-[#5f6873]">
+                <div className="mt-3 border-t border-[var(--ka-border)] pt-3">
+                  <p className="mb-1.5 text-[11px] font-medium text-[var(--ka-text-faint)]">
                     Upload PDF
                   </p>
                   <div className="flex gap-2 flex-wrap items-center">
@@ -804,25 +819,24 @@ export default function AdminPage() {
                     />
                     <label
                       htmlFor={`pdf-upload-${kb.id}`}
-                      className={`flex items-center gap-1.5 rounded-lg border border-[#262B33] bg-[#0B0D10] px-3 py-1.5 text-xs text-[#8A919C] hover:text-[#E8EAED] hover:border-[#3a414d] cursor-pointer ${
-                        uploadingpdf[kb.id] ? "pointer-events-none opacity-50" : ""
-                      }`}
+                      className={`flex items-center gap-1.5 rounded-lg border border-[var(--ka-border)] bg-[var(--ka-bg)] px-3 py-1.5 text-xs text-[var(--ka-text-muted)] hover:text-[var(--ka-text)] hover:border-[var(--ka-border-hover)] cursor-pointer ${uploadingpdf[kb.id] ? "pointer-events-none opacity-50" : ""
+                        }`}
                     >
                       <Upload size={12} /> Choose PDF
                     </label>
 
                     {uploadpdf[kb.id] && (
-                      <div className="flex items-center gap-1.5 rounded-lg bg-[#0B0D10] px-3 py-1.5 text-xs text-[#C3C8D0] min-w-0">
-                        <FileText size={12} className="text-[#5f6873] shrink-0" />
+                      <div className="flex items-center gap-1.5 rounded-lg bg-[var(--ka-bg)] px-3 py-1.5 text-xs text-[var(--ka-text-secondary)] min-w-0">
+                        <FileText size={12} className="text-[var(--ka-text-faint)] shrink-0" />
                         <span className="truncate max-w-[160px]">{uploadpdf[kb.id]!.name}</span>
-                        <span className="text-[#5f6873] shrink-0">
+                        <span className="text-[var(--ka-text-faint)] shrink-0">
                           ({(uploadpdf[kb.id]!.size / 1024).toFixed(0)} KB)
                         </span>
                         {!uploadingpdf[kb.id] && (
                           <button
                             onClick={() => setUploadpdf((f) => ({ ...f, [kb.id]: null }))}
                             title="Remove"
-                            className="text-[#5f6873] hover:text-[#FF4747] shrink-0"
+                            className="text-[var(--ka-text-faint)] hover:text-[var(--ka-danger-text)] shrink-0"
                           >
                             <X size={12} />
                           </button>
@@ -831,7 +845,7 @@ export default function AdminPage() {
                     )}
 
                     <button
-                      className="flex items-center gap-1 rounded-lg border border-[#262B33] bg-[#0B0D10] px-3 py-1.5 text-xs text-[#8A919C] hover:text-[#E8EAED] disabled:opacity-50"
+                      className="flex items-center gap-1 rounded-lg border border-[var(--ka-border)] bg-[var(--ka-bg)] px-3 py-1.5 text-xs text-[var(--ka-text-muted)] hover:text-[var(--ka-text)] disabled:opacity-50"
                       onClick={() => Uploadpdf(kb.id)}
                       disabled={uploadingpdf[kb.id] || !uploadpdf[kb.id]}
                     >
@@ -846,9 +860,8 @@ export default function AdminPage() {
                   </div>
                   {uploadResultpdf[kb.id] && (
                     <p
-                      className={`mt-1.5 text-[11px] ${
-                        uploadResultpdf[kb.id].startsWith("Error") ? "text-[#FF4747]" : "text-[#8A919C]"
-                      }`}
+                      className={`mt-1.5 text-[11px] ${uploadResultpdf[kb.id].startsWith("Error") ? "text-[var(--ka-danger-text)]" : "text-[var(--ka-text-muted)]"
+                        }`}
                     >
                       {uploadResultpdf[kb.id]}
                     </p>
@@ -863,30 +876,30 @@ export default function AdminPage() {
         {isSuperAdmin && (
           <section className="flex flex-col gap-3">
             <div className="flex items-center gap-2">
-              <Users size={14} className="text-[#5f6873]" />
+              <Users size={14} className="text-[var(--ka-text-faint)]" />
               <h2 className="text-sm font-semibold">Manage User Roles</h2>
             </div>
-            <div className="rounded-xl border border-[#262B33] bg-[#15181E] overflow-hidden">
+            <div className="rounded-xl border border-[var(--ka-border)] bg-[var(--ka-surface)] overflow-hidden">
               {users.map((u, i) => (
                 <div
                   key={u.id}
-                  className={`flex items-center justify-between px-4 py-2.5 ${i !== 0 ? "border-t border-[#262B33]" : ""}`}
+                  className={`flex items-center justify-between px-4 py-2.5 ${i !== 0 ? "border-t border-[var(--ka-border)]" : ""}`}
                 >
-                  <span className="text-xs text-[#C3C8D0] truncate max-w-[55%]">
+                  <span className="text-xs text-[var(--ka-text-secondary)] truncate max-w-[55%]">
                     {u.email}
                   </span>
                   <div className="flex items-center gap-2">
                     {changingRole[u.id] && (
                       <Loader2
                         size={12}
-                        className="animate-spin text-[#5f6873]"
+                        className="animate-spin text-[var(--ka-text-faint)]"
                       />
                     )}
                     <select
                       value={u.role}
                       disabled={changingRole[u.id]}
                       onChange={(e) => changeRole(u.id, e.target.value)}
-                      className="rounded-md border border-[#262B33] bg-[#0B0D10] px-2 py-1 text-xs text-[#C3C8D0] outline-none focus:border-[#3a414d] disabled:opacity-50"
+                      className="rounded-md border border-[var(--ka-border)] bg-[var(--ka-bg)] px-2 py-1 text-xs text-[var(--ka-text-secondary)] outline-none focus:border-[var(--ka-border-hover)] disabled:opacity-50"
                     >
                       {Object.entries(ROLE_LABELS).map(([val, label]) => (
                         <option key={val} value={val}>
