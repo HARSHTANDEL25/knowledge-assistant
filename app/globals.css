@@ -3,6 +3,40 @@
 :root {
   --background: #ffffff;
   --foreground: #171717;
+
+  --ka-bg: #F7F8FA;
+  --ka-surface: #FFFFFF;
+  --ka-border: #E3E6EB;
+  --ka-border-hover: #C7CCD6;
+  --ka-text: #1A1F29;
+  --ka-text-secondary: #4B5563;
+  --ka-text-muted: #6B7280;
+  --ka-text-faint: #9AA1AC;
+  --ka-user-bubble: #EEF1F5;
+  --ka-code-bg: #EEF1F5;
+  --ka-link: #2563EB;
+  --ka-warn-bg: #FEF3C7;
+  --ka-warn-text: #92400E;
+  --ka-danger-bg: #FEE2E2;
+  --ka-danger-text: #B42318;
+}
+
+[data-theme="dark"] {
+  --ka-bg: #0B0D10;
+  --ka-surface: #15181E;
+  --ka-border: #262B33;
+  --ka-border-hover: #3A414D;
+  --ka-text: #E8EAED;
+  --ka-text-secondary: #C3C8D0;
+  --ka-text-muted: #9AA6B2;
+  --ka-text-faint: #6B7280;
+  --ka-user-bubble: #1C2026;
+  --ka-code-bg: #20242C;
+  --ka-link: #7FA8FF;
+  --ka-warn-bg: #3A2A12;
+  --ka-warn-text: #F0B429;
+  --ka-danger-bg: #2A1212;
+  --ka-danger-text: #FF6B6B;
 }
 
 @theme inline {
@@ -10,13 +44,6 @@
   --color-foreground: var(--foreground);
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
 }
 
 body {
