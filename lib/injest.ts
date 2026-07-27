@@ -1,3 +1,4 @@
+import { createHash } from "crypto";
 import { extractText, getDocumentProxy } from "unpdf";
 import { createAdminClient } from "./supabase/admin";
 import { chunkText } from "./chunking";
@@ -19,10 +20,47 @@ export async function ingest(
     await db.from("documents").insert({ kb_id: kbId, source: fileName, title: fileName, status: "failed" });
     return 0;
   }
+
+  // checking for duplicate file
+  //pdf or twice upload should not be in db - hash the extracted text wo we can detect the case and stop it from re-emebedding 
+
+  const contentHash = createHash("sha256").update(pages.join("\n")).digest("hex");
+  // lets put it in data 
+  const { data: existing } = await db
+    .from("documents")
+    .select("id, source")
+    .eq("kb_id", kbId)
+    .eq("content_hash", contentHash)
+    .eq("is_current", true)
+    .neq("source", fileName)
+    .maybeSingle();
+
   await db.from("documents").delete().eq("kb_id", kbId).eq("source", fileName);
+
+  if (existing) {
+    await db.from("documents").insert({
+      kb_id: kbId,
+      source: fileName,
+      title: fileName,
+      status: "duplicate",
+      is_current: false,
+      content_hash: contentHash,
+
+    })
+    return 0;
+  }
+
+
   const { data: doc, error } = await db
     .from("documents")
-    .insert({ kb_id: kbId, source: fileName, title: fileName, status: "processing", is_current: true })
+    .insert({
+      kb_id: kbId,
+      source: fileName,
+      title: fileName,
+      status: "processing",
+      is_current: true,
+      content_hash: contentHash,
+    })
     .select()
     .single();
   if (error) throw error;

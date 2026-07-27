@@ -117,7 +117,7 @@ async function ingest(
   const pages = Array.isArray(text) ? text : [text];
   if (pages.join("").trim().length === 0) {
     await db.from("documents").insert({ kb_id: kbId, source: fileName, title: fileName, status: "failed" });
-    console.log(`    ⚠️  ${fileName}: 0 chars (scanned) — failed`);
+    console.log(`      ${fileName}: 0 chars (scanned) — failed`);
     return 0;
   }
   await db.from("documents").delete().eq("kb_id", kbId).eq("source", fileName);
@@ -174,9 +174,9 @@ async function main() {
         const buf = await download(token, driveId, f.id);
         const n = await ingest(db, kb.id, f.name, buf);
         seenSources.push(f.name);
-        console.log(`    ✅ ${f.name}: ${n} chunks`);
+        console.log(`     ${f.name}: ${n} chunks`);
       } catch (e) {
-        console.error(`    ❌ ${f.name}: ${e}`);
+        console.error(`     ${f.name}: ${e}`);
       }
     }
 
@@ -194,11 +194,11 @@ async function main() {
       );
       for (const d of stale) {
         await db.from("documents").delete().eq("id", d.id);
-        console.log(`    🗑️  pruned (gone from SharePoint): ${d.source}`);
+        console.log(`     pruned (gone from SharePoint): ${d.source}`);
       }
     }
   }
-  console.log("\n✅ SharePoint sync complete.");
+  console.log("\n SharePoint sync complete.");
 }
 
 main().catch((e) => {

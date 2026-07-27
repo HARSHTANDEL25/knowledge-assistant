@@ -55,10 +55,12 @@ export async function GET() {
       const rows = (docs ?? []).filter((d: { source: string }) => d.source !== "stage0-seed");
       const ready = new Set(rows.filter((d) => d.status === "ready").map((d) => d.source));
       const failedSet = new Set(rows.filter((d) => d.status === "failed").map((d) => d.source));
+      const duplicateSet = new Set(rows.filter((d) => d.status === "duplicate").map((d) => d.source));
       const allDbNames = new Set(rows.map((d) => d.source));
 
       const unsynced = driveNames.filter((n) => !allDbNames.has(n)); // no doc row at all = new
       const failed = driveNames.filter((n) => failedSet.has(n)); // ingest failed (e.g. image PDF, 0 text)
+      const duplicate = driveNames.filter((n) => duplicateSet.has(n)); // same content as another file, skipped
       const stale = [...allDbNames].filter((n) => !driveNames.includes(n)); // gone from Drive
       folders.push({
         name: map.kbName,
@@ -67,6 +69,7 @@ export async function GET() {
         synced: driveNames.filter((n) => ready.has(n)).length,
         unsynced,
         failed,
+        duplicate,
         stale,
       });
     }

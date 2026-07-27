@@ -77,9 +77,9 @@ async function main() {
   }
 
   if ((results?.length ?? 0) > 0) {
-    console.log("\n✅ STAGE 0 PASS — vector + keyword + RRF retrieval works.");
+    console.log("\n STAGE 0 PASS — vector + keyword + RRF retrieval works.");
   } else {
-    console.log("\n❌ STAGE 0 FAIL — no rows returned. Check the migration ran.");
+    console.log("\n STAGE 0 FAIL — no rows returned. Check the migration ran.");
     process.exit(1);
   }
 }
