@@ -67,7 +67,12 @@ export async function POST(req: Request) {
 
         let pages;
         try {
-          pages = await fetchPagesFromUrl(space_url, creds);
+          // Stream fetch progress. Without this the entire Confluence fetch is
+          // one opaque await — on a large tree the UI sits on "Fetching pages"
+          // for minutes and looks hung.
+          pages = await fetchPagesFromUrl(space_url, creds, (p) =>
+            sse(controller, { type: "progress", current: p.done, total: p.total, message: p.message }),
+          );
         } catch (e) {
           sse(controller, { type: "error", message: `Confluence fetch failed: ${String(e)}` });
           controller.close();

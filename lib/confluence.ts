@@ -32,15 +32,44 @@ function authHeader(creds: ConfluenceCreds): string {
   return `Basic ${Buffer.from(`${process.env.CONFLUENCE_EMAIL}:${process.env.CONFLUENCE_TOKEN}`).toString("base64")}`;
 }
 
+// Upper bound on any single Confluence request. The sync route runs with
+// maxDuration = 60, so one wedged request must not silently eat the whole
+// budget and get killed with no error. Generous on purpose — a body-expanded
+// batch of large pages is legitimately slow, and this is a hang guard, not a
+// performance knob.
+const REQUEST_TIMEOUT_MS = 25_000;
+
 // Shared HTTP fetch helper used by all functions.
 // Attaches auth header and throws a clear error on non-200 responses.
 async function cfetch(creds: ConfluenceCreds, url: string) {
   const res = await fetch(url, {
     headers: { Authorization: authHeader(creds), Accept: "application/json" },
+    signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
   });
   if (!res.ok) throw new Error(`Confluence API ${res.status}: ${await res.text()}`);
   return res.json();
 }
+
+// Bounded-concurrency map. Sliding window: a slot opens the moment any task
+// finishes, not at batch end.
+async function mapWithConcurrency<T>(
+  items: T[],
+  limit: number,
+  fn: (item: T) => Promise<void>,
+): Promise<void> {
+  const queue = [...items];
+  async function worker() {
+    while (queue.length > 0) {
+      const item = queue.shift()!;
+      await fn(item);
+    }
+  }
+  await Promise.all(Array.from({ length: Math.min(limit, items.length) }, worker));
+}
+
+// Progress reporting so the caller can stream something during the fetch.
+// Without this the whole fetch is one opaque await and the UI looks hung.
+export type FetchProgress = (info: { done: number; total?: number; message: string }) => void;
 
 export type ConfluencePage = { id: string; title: string; text: string; url: string };
 
@@ -60,27 +89,28 @@ function buildPageUrl(links: { base?: string; webui?: string } | undefined, id: 
 export async function fetchPagesFromUrl(
   confluenceUrl: string,
   creds: ConfluenceCreds,
+  onProgress?: FetchProgress,
 ): Promise<ConfluencePage[]> {
   const pageMatch = confluenceUrl.match(/\/pages\/(\d+)/);
   if (pageMatch) {
     return creds.type === "oauth"
-      ? fetchPageWithDescendantsOAuth(pageMatch[1], creds)
-      : fetchPageWithDescendantsV1(pageMatch[1], creds);
+      ? fetchPageWithDescendantsOAuth(pageMatch[1], creds, onProgress)
+      : fetchPageWithDescendantsV1(pageMatch[1], creds, onProgress);
   }
 
   // /folder/ID — use same CQL ancestor traversal as pages
   const folderMatch = confluenceUrl.match(/\/folder\/(\d+)/);
   if (folderMatch) {
     return creds.type === "oauth"
-      ? fetchDescendantsOfIdOAuth(folderMatch[1], creds)
-      : fetchPageWithDescendantsV1(folderMatch[1], creds);
+      ? fetchDescendantsOfIdOAuth(folderMatch[1], creds, onProgress)
+      : fetchPageWithDescendantsV1(folderMatch[1], creds, onProgress);
   }
 
   const spaceMatch = confluenceUrl.match(/\/spaces\/([^/?#]+)/i);
   if (spaceMatch) {
     return creds.type === "oauth"
-      ? fetchSpacePagesOAuth(spaceMatch[1], creds)
-      : fetchSpacePagesV1(spaceMatch[1], creds);
+      ? fetchSpacePagesOAuth(spaceMatch[1], creds, onProgress)
+      : fetchSpacePagesV1(spaceMatch[1], creds, onProgress);
   }
 
   throw new Error("Invalid Confluence URL — paste a space, page, or folder URL");
@@ -94,42 +124,51 @@ export async function fetchPagesFromUrl(
 // Confluence's ~10 req/s rate limit.
 const FETCH_CONCURRENCY = 8;
 
-async function fetchPageBodiesOAuth(ids: string[], creds: ConfluenceCreds): Promise<ConfluencePage[]> {
+async function fetchPageBodiesOAuth(
+  ids: string[],
+  creds: ConfluenceCreds,
+  onProgress?: FetchProgress,
+): Promise<ConfluencePage[]> {
   const pages: ConfluencePage[] = [];
-  const queue = [...ids];
+  let done = 0;
 
-  // Sliding window — spawn FETCH_CONCURRENCY workers, each pulls from the queue
-  // until empty. A slot opens the moment any request finishes, not at batch end.
-  async function worker() {
-    while (queue.length > 0) {
-      const id = queue.shift()!;
-      try {
-        const page = await cfetch(creds, `${v2Base(creds)}/pages/${id}?body-format=storage`);
-        const text = cleanHtml(await resolveUserMentions(page.body?.storage?.value ?? "", creds));
-        if (text.length >= 50) pages.push({ id: page.id, title: page.title, text, url: buildPageUrl(page._links, page.id) });
-      } catch (e) {
-        console.warn(`[confluence] skipping page ${id}:`, e);
-      }
+  await mapWithConcurrency(ids, FETCH_CONCURRENCY, async (id) => {
+    try {
+      const page = await cfetch(creds, `${v2Base(creds)}/pages/${id}?body-format=storage`);
+      const text = cleanHtml(await resolveUserMentions(page.body?.storage?.value ?? "", creds));
+      if (text.length >= 50) pages.push({ id: page.id, title: page.title, text, url: buildPageUrl(page._links, page.id) });
+    } catch (e) {
+      console.warn(`[confluence] skipping page ${id}:`, e);
+    } finally {
+      done++;
+      onProgress?.({ done, total: ids.length, message: `Fetched ${done}/${ids.length} pages from Confluence...` });
     }
-  }
+  });
 
-  await Promise.all(
-    Array.from({ length: Math.min(FETCH_CONCURRENCY, ids.length) }, worker)
-  );
   return pages;
 }
 
 // OAuth + folder URL.
 // Folders have no body — skips the root, fetches all pages inside via CQL.
-async function fetchDescendantsOfIdOAuth(id: string, creds: ConfluenceCreds): Promise<ConfluencePage[]> {
-  const ids = await fetchDescendantIdsViaCql(id, creds);
-  return fetchPageBodiesOAuth(ids, creds);
+async function fetchDescendantsOfIdOAuth(
+  id: string,
+  creds: ConfluenceCreds,
+  onProgress?: FetchProgress,
+): Promise<ConfluencePage[]> {
+  const ids = await fetchDescendantIdsViaCql(id, creds, onProgress);
+  return fetchPageBodiesOAuth(ids, creds, onProgress);
 }
 
 // OAuth + page URL.
 // Fetches root page body via v2, then all descendants via CQL, each body via v2.
-async function fetchPageWithDescendantsOAuth(pageId: string, creds: ConfluenceCreds): Promise<ConfluencePage[]> {
+async function fetchPageWithDescendantsOAuth(
+  pageId: string,
+  creds: ConfluenceCreds,
+  onProgress?: FetchProgress,
+): Promise<ConfluencePage[]> {
   const pages: ConfluencePage[] = [];
+
+  onProgress?.({ done: 0, message: "Fetching root page from Confluence..." });
 
   // Root page body via v2
   const root = await cfetch(creds, `${v2Base(creds)}/pages/${pageId}?body-format=storage`);
@@ -137,8 +176,8 @@ async function fetchPageWithDescendantsOAuth(pageId: string, creds: ConfluenceCr
   if (rootText.length >= 50) pages.push({ id: root.id, title: root.title, text: rootText, url: buildPageUrl(root._links, root.id) });
 
   // All descendants via v1 CQL — fetch bodies in parallel batches
-  const ids = await fetchDescendantIdsViaCql(pageId, creds);
-  const descendants = await fetchPageBodiesOAuth(ids, creds);
+  const ids = await fetchDescendantIdsViaCql(pageId, creds, onProgress);
+  const descendants = await fetchPageBodiesOAuth(ids, creds, onProgress);
   return [...pages, ...descendants];
 }
 
@@ -146,7 +185,11 @@ async function fetchPageWithDescendantsOAuth(pageId: string, creds: ConfluenceCr
 // Uses v1 /search which still works on the OAuth gateway (not deprecated).
 // CQL ancestor=X traverses the full tree including pages inside folders.
 // Returns only IDs — bodies are fetched separately via v2 to avoid 410.
-async function fetchDescendantIdsViaCql(pageId: string, creds: ConfluenceCreds): Promise<string[]> {
+async function fetchDescendantIdsViaCql(
+  pageId: string,
+  creds: ConfluenceCreds,
+  onProgress?: FetchProgress,
+): Promise<string[]> {
   const base = v1Base(creds);
   const ids: string[] = [];
   let start = 0;
@@ -158,6 +201,7 @@ async function fetchDescendantIdsViaCql(pageId: string, creds: ConfluenceCreds):
       const id = r.content?.id ?? r.id;
       if (id) ids.push(id);
     }
+    onProgress?.({ done: ids.length, message: `Discovered ${ids.length} pages in Confluence tree...` });
     if (!json._links?.next) break;
     start += 50;
   }
@@ -167,7 +211,11 @@ async function fetchDescendantIdsViaCql(pageId: string, creds: ConfluenceCreds):
 
 // OAuth + space URL.
 // CQL space=KEY finds all pages in the space, fetches each body via v2.
-async function fetchSpacePagesOAuth(spaceKey: string, creds: ConfluenceCreds): Promise<ConfluencePage[]> {
+async function fetchSpacePagesOAuth(
+  spaceKey: string,
+  creds: ConfluenceCreds,
+  onProgress?: FetchProgress,
+): Promise<ConfluencePage[]> {
   const base = v1Base(creds);
   const ids: string[] = [];
   let start = 0;
@@ -180,12 +228,13 @@ async function fetchSpacePagesOAuth(spaceKey: string, creds: ConfluenceCreds): P
       const id = r.content?.id ?? r.id;
       if (id) ids.push(id);
     }
+    onProgress?.({ done: ids.length, message: `Discovered ${ids.length} pages in space...` });
     if (!json._links?.next) break;
     start += 50;
   }
 
   // Then fetch all bodies in parallel batches
-  return fetchPageBodiesOAuth(ids, creds);
+  return fetchPageBodiesOAuth(ids, creds, onProgress);
 }
 
 // ── API token: v1 API ─────────────────────────────────────────────────────────
@@ -193,9 +242,15 @@ async function fetchSpacePagesOAuth(spaceKey: string, creds: ConfluenceCreds): P
 // API token + page or folder URL.
 // v1 works fine on direct instance URL — body returned inline with expand=body.storage,
 // no need for a separate v2 fetch per page.
-async function fetchPageWithDescendantsV1(pageId: string, creds: ConfluenceCreds): Promise<ConfluencePage[]> {
+async function fetchPageWithDescendantsV1(
+  pageId: string,
+  creds: ConfluenceCreds,
+  onProgress?: FetchProgress,
+): Promise<ConfluencePage[]> {
   const base = v1Base(creds);
   const pages: ConfluencePage[] = [];
+
+  onProgress?.({ done: 0, message: "Fetching root page from Confluence..." });
 
   const root = await cfetch(creds, `${base}/content/${pageId}?expand=body.storage`);
   const rootText = cleanHtml(await resolveUserMentions(root.body?.storage?.value ?? "", creds));
@@ -205,11 +260,23 @@ async function fetchPageWithDescendantsV1(pageId: string, creds: ConfluenceCreds
   while (true) {
     const cql = encodeURIComponent(`ancestor = ${pageId} AND type = page`);
     const json = await cfetch(creds, `${base}/search?cql=${cql}&expand=body.storage&limit=50&start=${start}`);
-    for (const r of json.results ?? []) {
+    const results = json.results ?? [];
+
+    // Resolve every @mention in this batch up front, then the per-page loop
+    // below hits a warm cache instead of a round trip per page.
+    await warmUserCache(
+      results.map((r: { content?: { body?: { storage?: { value?: string } } }; body?: { storage?: { value?: string } } }) =>
+        (r.content ?? r).body?.storage?.value ?? "",
+      ),
+      creds,
+    );
+
+    for (const r of results) {
       const page = r.content ?? r;
       const text = cleanHtml(await resolveUserMentions(page.body?.storage?.value ?? "", creds));
       if (text.length >= 50) pages.push({ id: page.id, title: page.title, text, url: buildPageUrl(page._links, page.id) });
     }
+    onProgress?.({ done: pages.length, message: `Fetched ${pages.length} pages from Confluence...` });
     if (!json._links?.next) break;
     start += 50;
   }
@@ -219,17 +286,31 @@ async function fetchPageWithDescendantsV1(pageId: string, creds: ConfluenceCreds
 
 // API token + space URL.
 // GET /content?spaceKey=KEY returns all pages with body inline.
-async function fetchSpacePagesV1(spaceKey: string, creds: ConfluenceCreds): Promise<ConfluencePage[]> {
+async function fetchSpacePagesV1(
+  spaceKey: string,
+  creds: ConfluenceCreds,
+  onProgress?: FetchProgress,
+): Promise<ConfluencePage[]> {
   const base = v1Base(creds);
   const pages: ConfluencePage[] = [];
   let start = 0;
 
   while (true) {
     const json = await cfetch(creds, `${base}/content?spaceKey=${spaceKey}&type=page&expand=body.storage&limit=50&start=${start}`);
-    for (const page of json.results ?? []) {
+    const results = json.results ?? [];
+
+    // Same batch warm-up as the page path — one concurrent pass instead of a
+    // serialized round trip per page.
+    await warmUserCache(
+      results.map((p: { body?: { storage?: { value?: string } } }) => p.body?.storage?.value ?? ""),
+      creds,
+    );
+
+    for (const page of results) {
       const text = cleanHtml(await resolveUserMentions(page.body?.storage?.value ?? "", creds));
       if (text.length > 50) pages.push({ id: page.id, title: page.title, text, url: buildPageUrl(page._links, page.id) });
     }
+    onProgress?.({ done: pages.length, message: `Fetched ${pages.length} pages from space...` });
     if (!json._links?.next) break;
     start += 50;
   }
@@ -243,6 +324,35 @@ async function fetchSpacePagesV1(spaceKey: string, creds: ConfluenceCreds): Prom
 // so tables of people (e.g. the certification lists) lost every name. Resolve
 // account-ids to display names via the user API; cache across the whole sync run.
 const userNameCache = new Map<string, string>();
+
+const USER_MENTION_RE = /<ri:user\b[^>]*ri:account-id="([^"]+)"[^>]*\/?>/gi;
+const USER_LOOKUP_CONCURRENCY = 8;
+
+// Resolve every @mention in a whole BATCH of page bodies before touching any of
+// them individually. Previously each page was awaited in turn inside a for loop,
+// so a tree of N pages cost N serialized round trips — and the same person
+// mentioned across 40 pages was looked up 40 times in a row before the cache
+// caught up. Deduping across the batch first collapses that to one bounded,
+// concurrent pass; resolveUserMentions() then finds everything cached and its
+// internal Promise.all resolves with nothing to fetch.
+async function warmUserCache(htmls: string[], creds: ConfluenceCreds): Promise<void> {
+  const ids = new Set<string>();
+  for (const html of htmls) {
+    for (const m of html.matchAll(USER_MENTION_RE)) {
+      if (!userNameCache.has(m[1])) ids.add(m[1]);
+    }
+  }
+  if (ids.size === 0) return;
+
+  await mapWithConcurrency([...ids], USER_LOOKUP_CONCURRENCY, async (id) => {
+    try {
+      const u = await cfetch(creds, `${v1Base(creds)}/user?accountId=${encodeURIComponent(id)}`);
+      userNameCache.set(id, u.displayName ?? u.publicName ?? "");
+    } catch {
+      userNameCache.set(id, ""); // leave blank rather than emit a raw account-id
+    }
+  });
+}
 
 export async function resolveUserMentions(html: string, creds: ConfluenceCreds): Promise<string> {
   const re = /<ri:user\b[^>]*ri:account-id="([^"]+)"[^>]*\/?>/gi;
