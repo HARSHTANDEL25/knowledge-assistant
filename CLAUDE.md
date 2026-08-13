@@ -32,7 +32,7 @@ Google Drive / Confluence / direct upload → scripts/ingest*.ts → lib/chunkin
 
 1. **`lib/config.ts` is the single source of truth for RAG parameters** (embed model, embed dim, chunk size/overlap, retrieval top-k, model fallback chain). It's imported by *both* the ingest scripts and the query path specifically so they can't drift. If you change `EMBED_MODEL` or `EMBED_DIM`, that's a **re-embed migration** (the `chunks.embedding` column is `vector(384)`), not a config flip — existing embeddings become incompatible.
 
-2. **The chat/retrieval path must use the user-JWT Supabase client, never the service-role key.** RLS is what enforces per-user knowledge-base access (open for hr/it, granted per-user for project KBs via `project_access`). The service-role key is for ingestion only. `/api/chat` explicitly requires an authenticated session — it is intentionally *not* public, because `middleware.ts` skips gating for `/api/*` routes.
+2. **The chat/retrieval path must use the user-JWT Supabase client, never the service-role key.** RLS is what enforces per-user knowledge-base access (open for hr/it, granted per-user for project KBs via `project_access`). The service-role key is for ingestion only. `/api/chat` explicitly requires an authenticated session — it is intentionally *not* public, because `proxy.ts` skips gating for `/api/*` routes.
 
 3. **`hybrid_search()` must remain `SECURITY INVOKER`, never `SECURITY DEFINER`.** `SECURITY INVOKER` is what makes RLS apply to both the vector and keyword legs of the query. Migration `0001_init.sql` includes a `do $$ ... raise exception ... $$` assertion that fails the migration outright if this function is ever changed to `SECURITY DEFINER` — treat that as a hard security gate, not a bug to work around.
 

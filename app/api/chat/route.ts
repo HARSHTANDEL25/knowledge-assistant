@@ -49,7 +49,7 @@ export async function POST(req: Request) {
   // User-JWT client. RLS still scopes what each user can retrieve, but the
   // endpoint itself now requires a session — it is NOT public. Previously an
   // anonymous request could read hr/it content and burn LLM quota, because
-  // middleware deliberately skips /api/* route gating.
+  // proxy.ts deliberately skips /api/* route gating.
   const cookieStore = await cookies();
   const supabase = createClient(cookieStore);
 
