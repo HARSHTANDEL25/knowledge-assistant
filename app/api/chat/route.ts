@@ -75,6 +75,9 @@ export async function POST(req: Request) {
     citations = r.citations;
   } catch (e) {
     // Embedding/search failed (e.g. HF down) — surface, don't fake an answer.
+    // Log the real cause: the user-facing message is deliberately generic, so
+    // without this the runtime logs show a bare 503 and no reason.
+    console.error("[chat] retrieval failed:", e instanceof Error ? e.message : e);
     return new Response(
       "Search is temporarily unavailable (embedding service). Please try again.",
       { status: 503, headers: { "x-sources": "%5B%5D" } },
