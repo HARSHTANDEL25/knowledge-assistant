@@ -5,7 +5,7 @@
 //
 //   npm run verify:stage0
 //
-// Requires .env.local: NEXT_PUBLIC_SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, HF_TOKEN
+// Requires .env.local: NEXT_PUBLIC_SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY
 // and the 0001_init.sql migration already applied.
 
 import { config } from "dotenv";

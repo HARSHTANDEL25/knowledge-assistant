@@ -22,7 +22,7 @@ Built with Next.js (App Router), Supabase (Postgres + pgvector), and Groq-hosted
 | Framework | Next.js 16 (App Router), React 19 |
 | Database | Supabase (Postgres + `pgvector` + RLS) |
 | LLM | Groq (`@ai-sdk/groq` via Vercel AI SDK), streaming responses |
-| Embeddings | Hugging Face Inference (`all-MiniLM-L6-v2`) |
+| Embeddings | `all-MiniLM-L6-v2` run in-process with transformers.js (free, no API key) |
 | Chunking | `@langchain/textsplitters` |
 | PDF parsing | `unpdf` |
 | Styling | Tailwind CSS |
@@ -35,7 +35,6 @@ Built with Next.js (App Router), Supabase (Postgres + pgvector), and Groq-hosted
 - Node.js 20+
 - A Supabase project (Postgres with the `vector` extension available)
 - A Groq API key
-- A Hugging Face token (for embeddings)
 - (Optional) Google Cloud service account for Drive sync, and/or Confluence OAuth app for Confluence sync
 
 ### 1. Install dependencies
@@ -55,7 +54,6 @@ SUPABASE_SERVICE_ROLE_KEY=       # ingestion only — never used on the user req
 NEXT_PUBLIC_APP_URL=
 
 GROQ_API_KEY=
-HF_TOKEN=
 
 # Google Drive sync (service account — no Workspace admin needed)
 GOOGLE_CLIENT_EMAIL=

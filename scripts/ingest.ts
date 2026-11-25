@@ -3,7 +3,7 @@
 //
 //   npm run ingest -- ./path/to/file.pdf <kb-slug>
 //
-// Requires .env.local: NEXT_PUBLIC_SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, HF_TOKEN
+// Requires .env.local: NEXT_PUBLIC_SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY
 
 import { config } from "dotenv";
 config({ path: ".env.local" });

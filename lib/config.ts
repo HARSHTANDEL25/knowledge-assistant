@@ -25,7 +25,3 @@ export const FALLBACK_MODELS = [
   "qwen/qwen3-32b",          // last-resort, separate bucket
 ];
 
-// HF moved off the old api-inference.huggingface.co host (now dead in DNS).
-// Current endpoint is the router + hf-inference provider.
-export const HF_FEATURE_EXTRACTION_URL =
-  `https://router.huggingface.co/hf-inference/models/${EMBED_MODEL}/pipeline/feature-extraction`;

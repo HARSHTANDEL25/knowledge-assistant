@@ -9,7 +9,7 @@
 //   SP_TENANT_ID, SP_CLIENT_ID, SP_CLIENT_SECRET   (from the Azure app registration)
 //   SP_SITE_URL   e.g. https://horizontal.sharepoint.com/sites/CompanyKnowledgeBase
 //   SP_LIBRARY    (optional) document library display name, default "Documents"
-//   + the usual SUPABASE_SERVICE_ROLE_KEY, HF_TOKEN
+//   + the usual SUPABASE_SERVICE_ROLE_KEY
 //
 // Azure prerequisite (IT): App registration + Microsoft Graph application
 // permission Sites.Selected (or Sites.Read.All) with admin consent; if
