@@ -1,8 +1,15 @@
 import type { NextConfig } from "next";
 
+// transformers.js also imports sharp at load time (even for text-only use),
+// and sharp dlopens libvips from @img/sharp-libvips-linux-x64 — another
+// runtime-resolved native file that tracing misses.
 const ONNX_LINUX_CPU = [
   "node_modules/onnxruntime-node/bin/napi-v*/linux/x64/onnxruntime_binding.node",
   "node_modules/onnxruntime-node/bin/napi-v*/linux/x64/libonnxruntime.so.1",
+  // transformers pins its own sharp (0.35), installed nested under it.
+  "node_modules/@huggingface/transformers/node_modules/sharp/**",
+  "node_modules/@huggingface/transformers/node_modules/@img/sharp-linux-x64/**",
+  "node_modules/@huggingface/transformers/node_modules/@img/sharp-libvips-linux-x64/**",
 ];
 
 const nextConfig: NextConfig = {
@@ -30,6 +37,8 @@ const nextConfig: NextConfig = {
       "node_modules/onnxruntime-node/bin/napi-v*/linux/arm64/**",
       "node_modules/onnxruntime-node/bin/napi-v*/linux/x64/libonnxruntime_providers_*",
       "node_modules/@img/sharp-*darwin*/**",
+      "node_modules/@huggingface/transformers/node_modules/@img/sharp-*darwin*/**",
+      "node_modules/@huggingface/transformers/node_modules/@img/sharp-*win32*/**",
       "node_modules/@img/sharp-*win32*/**",
     ],
   },
