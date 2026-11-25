@@ -4,6 +4,12 @@ import type { NextConfig } from "next";
 // and sharp dlopens libvips from @img/sharp-libvips-linux-x64 — another
 // runtime-resolved native file that tracing misses.
 const ONNX_LINUX_CPU = [
+  // transformers loads onnxruntime-node via createRequire(...)("onnxruntime-node"),
+  // which tracing can't see either — so its JS and its one runtime dep go too.
+  "node_modules/onnxruntime-node/package.json",
+  "node_modules/onnxruntime-node/dist/**",
+  "node_modules/onnxruntime-node/lib/**",
+  "node_modules/onnxruntime-common/**",
   "node_modules/onnxruntime-node/bin/napi-v*/linux/x64/onnxruntime_binding.node",
   "node_modules/onnxruntime-node/bin/napi-v*/linux/x64/libonnxruntime.so.1",
   // transformers pins its own sharp (0.35), installed nested under it.
